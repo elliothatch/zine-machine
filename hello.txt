@@ -1,0 +1,5 @@
+hello world!
+how are you, good?
+here is an unsupported character: ح what will happen?
+another one: س !!!
+good luck!

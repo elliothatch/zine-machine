@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zine-machine"
+version = "0.1.0"
+description = "print zines from a receipt printer using raspberry pi"
+readme = "README.md"
+authors = [
+	{ name = "Elliot Hatch", email = "elliot.hatch@gmail.com" },
+]
+license = { file = "LICENSE" }
+requires-python = ">=3.7"
+
+dependencies = [
+	"python-escpos==3.0a8",
+	"RPi.GPIO"
+]
+
+classifiers = [
+	"Development Status :: 4 - Beta",
+	"License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
+	"Programming Language :: Python :: 3 :: Only",
+	"Programming Language :: Python :: 3.7",
+	"Programming Language :: Python :: 3.8",
+	"Programming Language :: Python :: 3.9",
+	"Programming Language :: Python :: 3.10",
+	"Programming Language :: Python :: 3.11",
+]

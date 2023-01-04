@@ -1,0 +1,9 @@
+[Unit]
+Description=Bind to receipt printer bluetooth
+
+[Service]
+Type=oneshot
+ExecStart=rfcomm bind rfcomm0 02:3B:A9:4C:F0:AE
+
+[Install]
+WantedBy=multi-user.target
