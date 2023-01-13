@@ -126,3 +126,6 @@ python -m pip install -e . --user
 ```
 python -m zine-machine
 ```
+
+## test
+python -m unittest

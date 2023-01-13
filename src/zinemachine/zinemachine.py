@@ -7,10 +7,7 @@ import sys
 from datetime import date
 import textwrap
 from escpos.printer import Serial
-from escpos import constants, codepages, capabilities
 from serial.serialutil import SerialException
-import textwrap
-from threading import Timer
 import RPi.GPIO as GPIO
 
 from .button import Button
@@ -18,11 +15,12 @@ from .button import Button
 YELLOW = '\033[93m'
 ENDC = '\033[0m'
 
+
 def printZineMachineLogo(p):
-    #p.set(underline=2, double_width=True, double_height=True)
-    #p.text("╔╤▓▓╤╗\n")
-    #p.set(double_width=True, double_height=True)
-    #p.text("╠╧══╧╣\n╚════╝")
+    # p.set(underline=2, double_width=True, double_height=True)
+    # p.text("╔╤▓▓╤╗\n")
+    # p.set(double_width=True, double_height=True)
+    # p.text("╠╧══╧╣\n╚════╝")
 
     p.set(double_width=True, double_height=True)
     p.text("╔╤")
@@ -69,30 +67,30 @@ class Zine(object):
                 value = line[splitIndex + 1:].strip()
 
                 if key in metadata:
-                    print("{}Warning (Zine.extratMetadata): {}'{}' contains duplicate metadata field '{}'. overwriting '{}' with '{}' {}".format(YELLOW, path, key, metadata[key], value, ENDC), file=sys.stderr)
+                    print("{}Warning (Zine.extratMetadata): '{}' contains duplicate metadata field '{}'. overwriting '{}' with '{}' {}".format(YELLOW, path, key, metadata[key], value, ENDC), file=sys.stderr)
 
                 metadata[key] = value
 
         return metadata
 
 
-""" 
-tries to check if the printer is online.
-the printer is considered offline if it is not ready to print or there is no paper.
-
-this relies on the serial connection already being established. if we can't connect to the printer at all the library throws an exception. then we should crash and let systemd restart the process.
-
-trying to recreate the serial connection in code is really slow because the library already handles trying to resend the data, so we don't bother
-
-retries - number of times to retry connection
-timeout - seconds to wait between retries
-@returns True on success, False after all retries fail
-"""
 def tryConnectBt(p, retries, timeout):
+    """
+    tries to check if the printer is online.
+    the printer is considered offline if it is not ready to print or there is no paper.
+
+    this relies on the serial connection already being established. if we can't connect to the printer at all the library throws an exception. then we should crash and let systemd restart the process.
+
+    trying to recreate the serial connection in code is really slow because the library already handles trying to resend the data, so we don't bother
+
+    retries - number of times to retry connection
+    timeout - seconds to wait between retries
+    @returns True on success, False after all retries fail
+    """
     for i in range(retries + 1):
-        #printerStatus = p.query_status(constants.RT_STATUS_ONLINE)
-        #if(len(printerStatus) > 0):
-        #and printerStatus[0] == 18
+        # printerStatus = p.query_status(constants.RT_STATUS_ONLINE)
+        # if(len(printerStatus) > 0):
+        # and printerStatus[0] == 18
 
         if(p.is_online()):
             return True
@@ -104,18 +102,19 @@ def tryConnectBt(p, retries, timeout):
     return False
 
 
-"""
-    categories - {categoryName: {filePath: Zine}}
-    buttons - {categoryName: Button}
-    randomZines - {categoryName: {index: number, zines: Zine[]}} zines in a category are added to this list and shuffled. the next random zine selected is at the given index, which is incremented after selection
-"""
 class ZineMachine(object):
+    """
+        categories - {categoryName: {filePath: Zine}}
+        buttons - {categoryName: Button}
+        randomZines - {categoryName: {index: number, zines: Zine[]}} zines in a category are added to this list and shuffled. the next random zine selected is at the given index, which is incremented after selection
+    """
+
     def __init__(self, profile, chordDelay=200/1000):
         self.categories = dict()
         self.profile = profile
         self.buttons = dict()
         self.chordDelay = chordDelay
-        #self.chordTimer = Timer(chordTime, self.
+        # self.chordTimer = Timer(chordTime, self.
 
         self.randomZines = dict()
 
@@ -133,30 +132,28 @@ class ZineMachine(object):
             pin,
             name=category,
             onPressed=onPressed
-            #onPressed=lambda button: print("{} pressed".format(b.name)),
-            #onReleased=lambda button: print("{} released".format(b.name))
+            # onPressed=lambda button: print("{} pressed".format(b.name)),
+            # onReleased=lambda button: print("{} released".format(b.name))
         )
 
         print("Bound button on pin {} to category '{}'".format(pin, category))
 
+    # def addButtonChord(self, buttons):
+        """
+        bind a callback function to the pressing/releasing of a chord of buttons
+        the buttons used must have been previously bound to a zine category with bindButton
 
-    """
-    bind a callback function to the pressing/releasing of a chord of buttons
-    the buttons used must have been previously bound to a zine category with bindButton
+        when a button is pressed, start self.chordTimer for self.chordDelay. if the timer is already running, reset it and start over.
+        when the timer expires, an action is taken based on which buttons are still pressed (so accidentally tapping the wrong button is not considered, although it will extend the chord delay)
 
-    when a button is pressed, start self.chordTimer for self.chordDelay. if the timer is already running, reset it and start over.
-    when the timer expires, an action is taken based on which buttons are still pressed (so accidentally tapping the wrong button is not considered, although it will extend the chord delay)
-
-    buttons - {buttonName} - the names of the buttons
-    """
-    #def addButtonChord(self, buttons):
-
+        buttons - {buttonName} - the names of the buttons
+        """
 
     def printRandomZineFromCategory(self, category, **kwargs):
         if category not in self.randomZines:
             # initialize random list
             c = self.categories.get(category)
-            if c == None or len(c) == 0:
+            if c is None or len(c) == 0:
                 raise ValueError("No zines in category '{}'".format(category))
 
             self.randomZines[category] = {'index': 0, 'zines': list(c.values())}
@@ -183,29 +180,31 @@ class ZineMachine(object):
                 fullCategory = "/".join(p.parts[1:])
 
                 for f in files:
+                    zineExts = ['.zine', '.txt']
+                    if os.path.splitext(f)[1] not in zineExts:
+                        continue
+
                     p = os.path.join(root, f)
                     self.categories[baseCategory][p] = Zine(p, fullCategory, Zine.extractMetadata(p))
 
-
     def initPrinter(self):
-        """ 9600 Baud, 8N1, Flow Control Enabled """
+        # 9600 Baud, 8N1, Flow Control Enabled
         self.printer = Serial(
-                profile=self.profile,
-                devfile='/dev/rfcomm0',
-                baudrate=9600,
-                bytesize=8,
-                parity='N',
-                stopbits=1,
-                timeout=1.00,
-                dsrdtr=True)
+            profile=self.profile,
+            devfile='/dev/rfcomm0',
+            baudrate=9600,
+            bytesize=8,
+            parity='N',
+            stopbits=1,
+            timeout=1.00,
+            dsrdtr=True)
 
         # wait for bluetooth connection to establish
         isOnline = False
         try:
             isOnline = tryConnectBt(self.printer, 5, 1)
         except SerialException as err:
-            print("Failed to connect to printer via Serial connection")
-
+            print("Failed to connect to printer via Serial connection: {}".format(str(err)))
 
         if(not isOnline):
             print("Printer offline. Exiting...")
@@ -216,14 +215,11 @@ class ZineMachine(object):
     def printHeader(self, zine, dryRun=False, echoStdOut=False):
         print(zine.metadata)
         border = {
-                'top': "╔═╦══════════════════════════════════════════╦═╗",
-                'top-left': "╠═╝ ",
-                'top-right':" ╚═╣",
-                'left': "║ ",
-                'right': " ║",
-                'bottom-left': "╠═╗ ",
-                'bottom-right': " ╔═╣",
-                'bottom': "╚═╩══════════════════════════════════════════╩═╝"
+            'top':         "╔═╦══════════════════════════════════════════╦═╗",
+            'top-left':    "╠═╝ ",                        'top-right': " ╚═╣",
+            'left':        "║ ",                                'right': " ║",
+            'bottom-left': "╠═╗ ",                     'bottom-right': " ╔═╣",
+            'bottom':      "╚═╩══════════════════════════════════════════╩═╝"
         }
 
         width = 48
@@ -233,12 +229,12 @@ class ZineMachine(object):
 
         title = [line.center(topWidth if i == 0 else innerWidth) for i, line in enumerate(textwrap.wrap(zine.metadata.get('title') or '', width=topWidth))]
 
-        #description = textWrapper.wrap(zine.metadata.get('"description') or '')
+        # description = textWrapper.wrap(zine.metadata.get('"description') or '')
         datepublished = date.fromisoformat(zine.metadata['datepublished']) if 'datepublished' in zine.metadata else None
         author = zine.metadata.get('author')
 
         byline = [line.center(innerWidth) for line in textwrap.wrap(", ".join(([author] if author else [])
-            + ([str(datepublished.year)] if datepublished else [])), width=innerWidth)]
+                                                                    + ([str(datepublished.year)] if datepublished else [])), width=innerWidth)]
         # todo: wrap category
         category = zine.category.center(bottomWidth)
 
@@ -304,20 +300,22 @@ class ZineMachine(object):
             self.printer.text(border['bottom'])
             self.printer.text('\n')
 
-    """
-    kwargs passed to TextWrapper
-    """
     def printZine(self, zine, dryRun=False, echoStdOut=False, **kwargs):
+        """
+        kwargs passed to TextWrapper
+        """
         if not isinstance(zine, Zine):
             raise TypeError("expected zine to have type 'Zine' but got '{}'".format(type(zine)))
 
-        kwargsDefault = {'width':48, 'expand_tabs':True, 'tabsize':4}
+        kwargsDefault = {'width': 48, 'expand_tabs': True, 'tabsize': 4}
 
         print("Printing zine '{}'".format(zine.path))
 
+        self.printer.set(align="left", width=1, height=1, font="a", bold=True, underline=0, invert=False, flip=False)
+
         with open(zine.path, encoding="utf-8") as f:
             # print header
-            self.printHeader(zine, dryRun, echoStdOut)
+            self.printHeader(zine, dryRun=dryRun, echoStdOut=echoStdOut)
 
             textWrapper = textwrap.TextWrapper(**{**kwargsDefault, **kwargs})
 
@@ -325,18 +323,18 @@ class ZineMachine(object):
             foundHeader = False
             foundText = False
             for line in f:
-                if foundText == False:
+                if foundText is False:
                     # search for header
                     if line.strip() == "":
                         continue
 
-                    if foundHeader == False:
+                    if foundHeader is False:
                         if line.strip() == '-----':
                             foundHeader = True
                             continue
                         else:
                             # there is no header, consider the entire file text
-                            foundText = true
+                            foundText = True
                     else:
                         # we are in the header
                         if line.strip() == '-----':
@@ -348,10 +346,11 @@ class ZineMachine(object):
                             if splitIndex > -1:
                                 # skip metadata
                                 continue
-                            else: 
+                            else:
                                 # the header ended abruptly
                                 foundText = True
 
+                # process line of text
                 wrapped = textWrapper.wrap(line)
                 for l in wrapped:
                     if echoStdOut:
@@ -365,17 +364,20 @@ class ZineMachine(object):
                     if not dryRun:
                         self.printer.text("\n")
 
-
-            printZineMachineLogo(self.printer)
+            self.printFooter(zine, dryRun=dryRun, echoStdOut=echoStdOut)
             self.printer.text("\n\n\n\n\n")
+
+    def printFooter(self, zine, dryRun=False, echoStdOut=False):
+        if not dryRun:
+            printZineMachineLogo(self.printer)
 
 
 def printCodepages(p):
     cpages = list(p.magic.encoder.codepages.keys())
     for page in cpages:
         print(page)
-        #if(page == "Unknown"):
-            #continue
+        # if(page == "Unknown"):
+        #     continue
 
         p.charcode('AUTO')
         p.text("\n")
@@ -389,9 +391,13 @@ def printCodepages(p):
         p.charcode('AUTO')
         p.text("\n")
 
-# tries to print all the characters in each codepage by using the unicode codepoints that map to them, and outputs the codepage the library used
+
 def debugCodepagesUnicode(p):
+    """ tries to print all the characters in each codepage by using the unicode codepoints that map to them, and outputs the codepage the library used """
+
     unknownEncodings = ["Unknown", "CP851", "CP853", "CP1098", "CP774", "CP772", "RK1048"]
+    cpages = list(p.magic.encoder.codepages.keys())
+
     for page in cpages:
         if(page in unknownEncodings):
             continue
@@ -409,9 +415,9 @@ def debugCodepagesUnicode(p):
 
     p.text("\n")
 
-        #print(encoder._get_codepage_char_map(page))
-        #print("")
-        #print("".join(encoder._get_codepage_char_list(page)))
+    # print(encoder._get_codepage_char_map(page))
+    # print("")
+    # print("".join(encoder._get_codepage_char_list(page)))
 
 
 # returns a set of all the printable characters in all supported codepages
@@ -428,6 +434,7 @@ def getPrintableCharacters(p):
         printableChars |= set(p.magic.encoder._get_codepage_char_list(page))
 
     return printableChars
+
 
 def printFile(p, path):
     textWrapper = textwrap.TextWrapper(width=48, expand_tabs=True, tabsize=4)
@@ -449,6 +456,7 @@ def printFile(p, path):
         p.text("=" * 48)
         p.text("\n\n\n")
 
+
 def resetFormatting(p):
     p.set(align="left", width=1, height=1, font="a", bold=False, underline=0, invert=False, flip=False)
 
@@ -462,14 +470,13 @@ def testPrint(p, text, **kwargs):
         {'bold': True, 'underline': 1},
         {'bold': True, 'underline': 2},
         {'invert': True},
-        #{'flip': True}
+        # {'flip': True}
     ]
 
     for s in settings:
         combinedSettings = {**kwargs, **s}
         p.set(**combinedSettings)
-        #p.text(combinedSettings)
+        # p.text(combinedSettings)
         p.text("\n")
         p.text(text)
         p.text("\n")
-

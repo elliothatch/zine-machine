@@ -1,6 +1,6 @@
 from threading import Timer
-import time
 import RPi.GPIO as GPIO
+
 
 class Button(object):
     def __init__(self, pin, onPressed=None, onReleased=None, name=None, debounceTime=10/1000):
@@ -16,10 +16,11 @@ class Button(object):
         GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         GPIO.add_event_detect(pin, GPIO.BOTH, callback=self.fallingInterrupt)
 
-    """
-    Interrupt handler
-    """
     def fallingInterrupt(self, pin):
+        """
+        Interrupt handler
+        """
+
         if self.timer.is_alive():
             return
 

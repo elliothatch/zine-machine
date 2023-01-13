@@ -1,7 +1,9 @@
 from escpos import capabilities
 
-# this is a custom profile for the printer we are using. self-test printout reports its model number as LMP201
+
 class LMP201(capabilities.Profile):
+    """ this is a custom profile for the printer we are using. self-test printout reports its model number as LMP201 """
+
     def __init__(self):
         # copy profile_data so we don't overwrite Default
         self.profile_data = dict(self.profile_data)
@@ -12,7 +14,6 @@ class LMP201(capabilities.Profile):
         # codepages that the printer has no glyphs for
         self.unsupportedCodepages = ['CP851', 'CP853', 'CP857', 'CP737', 'CP1254', 'CP1255', 'CP1256', 'CP1257', 'CP1258', 'RK1048']
 
-
         # codepages that are mapped to non-standard characters, breaking the auto-encoder
         # most of these mismatches are due to the library mapping the name of the codepage to a byte sequence, but the printer actually has a different codepage stored at that address
         # we might be able to fix this by remapping the codepage names. however, many of the codepages are only partially supported by the printer, so we would also need to remap those codepages
@@ -21,4 +22,3 @@ class LMP201(capabilities.Profile):
         self.nonstandardCodepages = ['CP866', 'CP775', 'CP720', 'CP861', 'ISO_8859-15', 'CP862', 'CP855', 'CP1125', 'CP869', 'CP1253', 'CP864', 'ISO_8859-7', 'TCVN-3-1', 'TCVN-3-2', 'CP874', 'CP1250', 'CP1251', 'ISO_8859-2', 'CP1251']
 
         self.profile_data['codePages'] = {i: cp for i, cp in self.profile_data['codePages'].items() if (cp not in self.unsupportedCodepages) and (cp not in self.nonstandardCodepages)}
-
