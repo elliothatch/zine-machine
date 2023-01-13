@@ -1,3 +1,4 @@
+import math
 import os
 import pathlib
 import string
@@ -10,7 +11,9 @@ from escpos.printer import Serial
 from serial.serialutil import SerialException
 import RPi.GPIO as GPIO
 
+from .zine import Zine
 from .button import Button
+from .markup import Parser
 
 YELLOW = '\033[93m'
 ENDC = '\033[0m'
@@ -28,50 +31,6 @@ def printZineMachineLogo(p):
     p.text("▓▓")
     p.set(double_width=True, double_height=True)
     p.text("╤╗\n╠╧══╧╣\n╚════╝\n")
-
-
-class Zine(object):
-    def __init__(self, path, category, metadata):
-        if not isinstance(path, str):
-            raise TypeError("expected path to have type 'str' but got '{}'".format(type(path)))
-        if not isinstance(category, str):
-            raise TypeError("expected category to have type 'str' but got '{}'".format(type(category)))
-        if not isinstance(metadata, dict):
-            raise TypeError("expected metadata to have type 'dict' but got '{}'".format(type(metadata)))
-
-        self.path = path
-        self.category = category
-        self.metadata = metadata
-
-    @staticmethod
-    def extractMetadata(path):
-        metadata = {}
-        with open(path, encoding="utf-8") as f:
-            inHeader = False
-            for line in f:
-                if line.strip() == "":
-                    continue
-
-                if not inHeader:
-                    if line.strip() == '-----':
-                        inHeader = True
-                        continue
-                    else:
-                        break
-
-                splitIndex = line.find(':')
-                if line.strip() == '-----' or splitIndex == -1:
-                    break
-
-                key = "".join(line[:splitIndex].lower().split())
-                value = line[splitIndex + 1:].strip()
-
-                if key in metadata:
-                    print("{}Warning (Zine.extratMetadata): '{}' contains duplicate metadata field '{}'. overwriting '{}' with '{}' {}".format(YELLOW, path, key, metadata[key], value, ENDC), file=sys.stderr)
-
-                metadata[key] = value
-
-        return metadata
 
 
 def tryConnectBt(p, retries, timeout):
@@ -109,10 +68,11 @@ class ZineMachine(object):
         randomZines - {categoryName: {index: number, zines: Zine[]}} zines in a category are added to this list and shuffled. the next random zine selected is at the given index, which is incremented after selection
     """
 
-    def __init__(self, profile, chordDelay=200/1000):
+    def __init__(self, profile, enableGPIO=True, chordDelay=200/1000):
         self.categories = dict()
         self.profile = profile
         self.buttons = dict()
+        self.enableGPIO = enableGPIO
         self.chordDelay = chordDelay
         # self.chordTimer = Timer(chordTime, self.
 
@@ -121,7 +81,8 @@ class ZineMachine(object):
         self.dryRun = False
         self.echoStdOut = False
 
-        GPIO.setmode(GPIO.BCM)
+        if self.enableGPIO:
+            GPIO.setmode(GPIO.BCM)
 
     def bindButton(self, category, pin):
         def onPressed(button):

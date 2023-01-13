@@ -8,17 +8,7 @@ TODO: unexpected behavior after parser.close() with malformed markup
 from typing import Union, Optional, List
 from html.parser import HTMLParser
 
-
-defaultAttrs = {
-    'align': 'left',
-    'width': 1,
-    'height': 1,
-    'font': 'a',
-    'bold': True,
-    'underline': 0,
-    'invert': False,
-    'flip': False
-}
+Position = tuple[int, int]
 
 
 class StartTag:
@@ -26,20 +16,23 @@ class StartTag:
     """
     tag: str
     attrs: dict
+    pos: Optional[Position]
 
-    def __init__(self, tag: str, attrs=dict()):
+    def __init__(self, tag: str, attrs=dict(), pos: Optional[Position] = None):
         self.tag = tag
         self.attrs = attrs
+        self.pos = pos
 
     def __eq__(self, other):
         if not isinstance(other, StartTag):
             return NotImplemented
 
         return self.tag == other.tag \
-            and self.attrs == other.attrs
+            and self.attrs == other.attrs \
+            and self.pos == other.pos
 
     def __repr__(self):
-        return f'StartTag(tag={self.tag}, attrs={self.attrs})'
+        return f'StartTag(tag={self.tag}, attrs={self.attrs}, pos={self.pos})'
 
 
 class MarkupText:
@@ -47,24 +40,27 @@ class MarkupText:
     """
 
     text: [Union[str, 'MarkupText']]
-    attrs: dict
+    styles: dict
+    pos: Optional[Position]
 
-    def __init__(self, text: Union[str, 'MarkupText', List[Union[str, 'MarkupText']]], attrs=dict()):
+    def __init__(self, text: Union[str, 'MarkupText', List[Union[str, 'MarkupText']]], styles=dict(), pos: Optional[Position] = None):
         if not isinstance(text, list):
             text = [text]
 
         self.text = text
-        self.attrs = attrs
+        self.styles = styles
+        self.pos = pos
 
     def __eq__(self, other):
         if not isinstance(other, MarkupText):
             return NotImplemented
 
         return self.text == other.text \
-            and self.attrs == other.attrs
+            and self.styles == other.styles \
+            and self.pos == other.pos
 
     def __repr__(self):
-        return f'MarkupText(attrs={self.attrs}, text={self.text})'
+        return f'MarkupText(styles={self.styles}, pos={self.pos}, text={self.text})'
 
 
 class MarkupImage:
@@ -72,33 +68,39 @@ class MarkupImage:
     """
     src: str
     caption: Optional[MarkupText]
+    pos: Optional[Position]
 
-    def __init__(self, src: str, caption: Optional[MarkupText] = None):
+    def __init__(self, src: str, caption: Optional[MarkupText] = None, pos: Optional[Position] = None):
         """
         src -- path to image
         caption -- the image caption.
-            default attrs align="center"
+            default styles align="center"
         """
         self.src = src
         self.caption = caption
+        self.pos = pos
 
     def __eq__(self, other):
         if not isinstance(other, MarkupImage):
             return NotImplemented
 
         return self.src == other.src \
-            and self.caption == other.caption
+            and self.caption == other.caption \
+            and self.pos == other.pos
 
     def __repr__(self):
-        return f'MarkupImage(src={self.src}, caption={self.caption})'
+        return f'MarkupImage(src={self.src}, pos={self.pos}, caption={self.caption})'
 
 
 class Parser(HTMLParser):
     """
     Parses zine markup into an AST for printer commands
 
-    Supported tags:
-        Underline <u>Underlined</u>
+    stack -- list of markup objects to be printed
+    text -- contains the full plaintext of the zine with all markup removed
+
+    Zine Markup tags:
+        <u>Underlined</u>
         <img src="./cooking1.gif">Image Caption</img>
 
     Usage:
@@ -107,22 +109,25 @@ class Parser(HTMLParser):
         # parser.stack == [MarkupText('hello'), MarkupText('world', {'bold':True})]
     """
     stack: [Union[StartTag, MarkupText, MarkupImage]]
+    text: str
 
     def __init__(self):
         super().__init__()
         self.stack = []
+        self.text = ''
 
     def handle_starttag(self, tag, attrs):
-        self.stack.append(StartTag(tag, dict(attrs)))
+        self.stack.append(StartTag(tag, dict(attrs), pos=self.getpos()))
 
     def handle_data(self, data):
+        self.text += data
         if len(self.stack) > 0:
             top = self.stack[-1]
-            if isinstance(top, MarkupText) and len(top.attrs) == 0:
-                # if the top of the stack is a MarkupText with no attrs, add the data to it instead of creating a new instance
+            if isinstance(top, MarkupText) and len(top.styles) == 0:
+                # if the top of the stack is a MarkupText with no styles, add the data to it instead of creating a new instance
                 top.text.append(data)
 
-        self.stack.append(MarkupText(data))
+        self.stack.append(MarkupText(data, pos=self.getpos()))
 
     def handle_endtag(self, tag):
         # walk back until we find the matching endtag
@@ -139,39 +144,40 @@ class Parser(HTMLParser):
             subexpressions = self.stack[i+1:]
             self.stack = self.stack[:i]
 
-            match tag:
-                case 'u':
-                    underlineAttrs = {'underline': 1}
-                    if len(subexpressions) == 1 and isinstance(subexpressions[0], MarkupText) and \
-                            (len(subexpressions[0].attrs) == 0 or subexpressions[0].attrs == underlineAttrs):
-                        # if there is only one subexpression and it is a MarkupText with identical or no attributes, use it's text instead of nesting the entire object
-                        subexpressions = subexpressions[0].text
-                    self.stack.append(MarkupText(subexpressions, underlineAttrs))
+            if tag == 'u' or tag == 'u2':
+                underlineStyles = {'underline': 1}
+                if len(subexpressions) == 1 and isinstance(subexpressions[0], MarkupText) and \
+                        (len(subexpressions[0].styles) == 0 or subexpressions[0].styles == underlineStyles):
+                    # if there is only one subexpression and it is a MarkupText with identical or no attributes, use it's text instead of nesting the entire object
+                    subexpressions = subexpressions[0].text
+                self.stack.append(MarkupText(subexpressions, underlineStyles, pos=startTag.pos))
+                return
+            elif tag == 'img':
+                if 'src' not in startTag.attrs:
+                    raise Exception("markup parse error: 'img' missing attribute 'src'")
+
+                captionStyles = {'align': 'center'}
+
+                if len(subexpressions) == 0:
+                    self.stack.append(MarkupImage(startTag.attrs['src'], None, pos=startTag.pos))
                     return
-                case 'img':
-                    if 'src' not in startTag.attrs:
-                        raise Exception("markup parse error: 'img' missing attribute 'src'")
 
-                    captionAttrs = {'align': 'center'}
+                # check if subexpressions are valid nodes (MarkupText)
+                for subexpr in subexpressions:
+                    if not isinstance(subexpr, MarkupText):
+                        raise Exception("markup parse error: '{}' is not allowed in an 'img' tag".format(type(subexpr).__name__))
 
-                    if len(subexpressions) == 0:
-                        self.stack.append(MarkupImage(startTag.attrs['src'], None))
-                        return
+                captionPos = subexpressions[0].pos if len(subexpressions) > 0 else startTag.pos()
 
-                    # check if subexpressions are valid nodes (MarkupText)
-                    for subexpr in subexpressions:
-                        if not isinstance(subexpr, MarkupText):
-                            raise Exception("markup parse error: '{}' is not allowed in an 'img' tag".format(type(subexpr).__name__))
+                if len(subexpressions) == 1 and isinstance(subexpressions[0], MarkupText) and \
+                        (len(subexpressions[0].styles) == 0 or subexpressions[0].styles == captionStyles):
+                    # if there is only one subexpression and it is a MarkupText with identical? or no attributes, use it's text instead of nesting the entire object
+                    subexpressions = subexpressions[0].text
 
-                    if len(subexpressions) == 1 and isinstance(subexpressions[0], MarkupText) and \
-                            (len(subexpressions[0].attrs) == 0 or subexpressions[0].attrs == captionAttrs):
-                        # if there is only one subexpression and it is a MarkupText with identical? or no attributes, use it's text instead of nesting the entire object
-                        subexpressions = subexpressions[0].text
-
-                    caption = MarkupText(subexpressions, captionAttrs)
-                    self.stack.append(MarkupImage(startTag.attrs['src'], caption))
-                    return
-                case _:
-                    raise Exception("markup parse error: unknown tag '<{}>'".format(tag))
+                caption = MarkupText(subexpressions, captionStyles, pos=captionPos)
+                self.stack.append(MarkupImage(startTag.attrs['src'], caption, pos=startTag.pos))
+                return
+            else:
+                raise Exception("markup parse error: unknown tag '<{}>'".format(tag))
 
         raise Exception("markup parse error: no matching opening tag for '</{}>'".format(tag))
