@@ -1,6 +1,6 @@
 import unittest
 
-from zinemachine.markup import Parser, MarkupText, MarkupImage
+from zinemachine.markup import Parser, MarkupText, MarkupImage, StrToken
 
 
 class TestParser(unittest.TestCase):
@@ -10,39 +10,39 @@ class TestParser(unittest.TestCase):
     def test_text(self):
         self.parser.feed('hello')
         expected = [
-            MarkupText('hello', pos=(1, 0))
+            MarkupText(StrToken('hello', pos=(1, 0)), pos=(1, 0))
         ]
         self.assertEqual(expected, self.parser.stack)
 
     def test_underline(self):
         self.parser.feed('<u>hello</u>')
         expected = [
-            MarkupText('hello', {'underline': 1}, pos=(1, 0))
+            MarkupText(StrToken('hello', pos=(1, 3)), {'underline': 1}, pos=(1, 0))
         ]
         self.assertEqual(expected, self.parser.stack)
 
     def test_text_underline(self):
         self.parser.feed('hello <u>world</u>')
         expected = [
-            MarkupText('hello ', pos=(1, 0)),
-            MarkupText('world', {'underline': 1}, pos=(1, 6))
+            MarkupText(StrToken('hello ', pos=(1, 0)), pos=(1, 0)),
+            MarkupText(StrToken('world', pos=(1, 9)), {'underline': 1}, pos=(1, 6))
         ]
         self.assertEqual(expected, self.parser.stack)
 
     def test_underline_text(self):
         self.parser.feed('<u>hello</u> world')
         expected = [
-            MarkupText('hello', {'underline': 1}, pos=(1, 0)),
-            MarkupText(' world', pos=(1, 12))
+            MarkupText(StrToken('hello', pos=(1, 3)), {'underline': 1}, pos=(1, 0)),
+            MarkupText(StrToken(' world', pos=(1, 12)), pos=(1, 12))
         ]
         self.assertEqual(expected, self.parser.stack)
 
     def test_text_underline_text(self):
         self.parser.feed('hello <u>world</u> goodbye')
         expected = [
-            MarkupText('hello ', pos=(1, 0)),
-            MarkupText('world', {'underline': 1}, pos=(1, 6)),
-            MarkupText(' goodbye', pos=(1, 18))
+            MarkupText(StrToken('hello ', pos=(1, 0)), pos=(1, 0)),
+            MarkupText(StrToken('world', pos=(1, 9)), {'underline': 1}, pos=(1, 6)),
+            MarkupText(StrToken(' goodbye', pos=(1, 18)), pos=(1, 18))
         ]
         self.assertEqual(expected, self.parser.stack)
 
@@ -57,7 +57,7 @@ class TestParser(unittest.TestCase):
         self.parser.feed('<img src="pic.png">hello</img>')
         expected = [
             MarkupImage('pic.png',
-                        MarkupText('hello', {'align': 'center'}, pos=(1, 19)),
+                        MarkupText(StrToken('hello', pos=(1, 19)), {'align': 'center'}, pos=(1, 19)),
                         pos=(1, 0))
         ]
         self.assertEqual(expected, self.parser.stack)
@@ -67,7 +67,7 @@ class TestParser(unittest.TestCase):
         expected = [
             MarkupImage('pic.png',
                         MarkupText(
-                            MarkupText('hello', {'underline': 1}, pos=(1, 19)),
+                            MarkupText(StrToken('hello', pos=(1, 22)), {'underline': 1}, pos=(1, 19)),
                             {'align': 'center'},
                             pos=(1, 19)),
                         pos=(1, 0))
@@ -79,8 +79,8 @@ class TestParser(unittest.TestCase):
         expected = [
             MarkupImage('pic.png',
                         MarkupText([
-                                   MarkupText('hello', {'underline': 1}, pos=(1, 19)),
-                                   MarkupText(' world', pos=(1, 31))],
+                                   MarkupText(StrToken('hello', pos=(1, 22)), {'underline': 1}, pos=(1, 19)),
+                                   MarkupText(StrToken(' world', pos=(1, 31)), pos=(1, 31))],
                                    {'align': 'center'},
                                    pos=(1, 19)),
                         pos=(1, 0))
@@ -92,10 +92,10 @@ class TestParser(unittest.TestCase):
         expected = [
             MarkupImage('pic.png',
                         MarkupText([
-                                   MarkupText('a ', pos=(1, 19)),
-                                   MarkupText('b', {'underline': 1}, pos=(1, 21)),
-                                   MarkupText(' c ', pos=(1, 29)),
-                                   MarkupText('d', {'underline': 1}, pos=(1, 32))],
+                                   MarkupText(StrToken('a ', pos=(1, 19)), pos=(1, 19)),
+                                   MarkupText(StrToken('b', pos=(1, 24)), {'underline': 1}, pos=(1, 21)),
+                                   MarkupText(StrToken(' c ', pos=(1, 29)), pos=(1, 29)),
+                                   MarkupText(StrToken('d', pos=(1, 35)), {'underline': 1}, pos=(1, 32))],
                                    {'align': 'center'},
                                    pos=(1, 19)),
                         pos=(1, 0))
@@ -105,9 +105,9 @@ class TestParser(unittest.TestCase):
     def test_multiline(self):
         self.parser.feed('\nhello\n\n<u>\nworld\n\n</u>\n')
         expected = [
-            MarkupText('\nhello\n\n', pos=(1, 0)),
-            MarkupText('\nworld\n\n', {'underline': 1}, pos=(4, 0)),
-            MarkupText('\n', pos=(7, 4))
+            MarkupText(StrToken('\nhello\n\n', pos=(1, 0)), pos=(1, 0)),
+            MarkupText(StrToken('\nworld\n\n', pos=(4, 3)), {'underline': 1}, pos=(4, 0)),
+            MarkupText(StrToken('\n', pos=(7, 4)), pos=(7, 4))
         ]
         self.assertEqual(expected, self.parser.stack)
 

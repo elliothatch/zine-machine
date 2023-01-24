@@ -35,18 +35,38 @@ class StartTag:
         return f'StartTag(tag={self.tag}, attrs={self.attrs}, pos={self.pos})'
 
 
+class StrToken:
+    text: str
+    pos: Optional[Position]
+
+    def __init__(self, text: str, pos: Optional[Position] = None):
+        self.text = text
+        self.pos = pos
+
+    def __repr__(self):
+        return f'StrToken(text={self.text}, pos={self.pos})'
+
+    def __eq__(self, other):
+        if not isinstance(other, StrToken):
+            return NotImplemented
+
+        return self.text == other.text \
+            and self.pos == other.pos
+
+
 class MarkupText:
     """Zine Markup AST Node - one or more sections of formatted text. may contain nested MarkupText nodes
     """
 
-    text: [Union[str, 'MarkupText']]
+    text: [Union[StrToken, 'MarkupText']]
     styles: dict
     pos: Optional[Position]
 
-    def __init__(self, text: Union[str, 'MarkupText', List[Union[str, 'MarkupText']]], styles=dict(), pos: Optional[Position] = None):
+    def __init__(self, text: Union[StrToken, 'MarkupText', List[Union[str, StrToken, 'MarkupText']]], styles=dict(), pos: Optional[Position] = None):
         if not isinstance(text, list):
             text = [text]
 
+        #self.text = [(t if not isinstance(t, str) else StrToken(t)) for t in text]
         self.text = text
         self.styles = styles
         self.pos = pos
@@ -92,6 +112,28 @@ class MarkupImage:
         return f'MarkupImage(src={self.src}, pos={self.pos}, caption={self.caption})'
 
 
+AstNode = Union[StartTag, MarkupText, MarkupImage, 'MarkupGroup']
+
+
+class MarkupGroup:
+    """ Zine Markup AST Node - generic group containing zero or more children nodes
+    Only used at the top level of the AST currently
+    """
+    children: [AstNode]
+
+    def __init__(self, children: [AstNode]):
+        self.children = children
+
+    def __eq__(self, other):
+        if not isinstance(other, MarkupGroup):
+            return NotImplemented
+
+        return self.children == other.children
+
+    def __repr__(self):
+        return f'MarkupGroup(children={self.children})'
+
+
 class Parser(HTMLParser):
     """
     Parses zine markup into an AST for printer commands
@@ -108,7 +150,7 @@ class Parser(HTMLParser):
         parser.feed('hello <b>world</b>')
         # parser.stack == [MarkupText('hello'), MarkupText('world', {'bold':True})]
     """
-    stack: [Union[StartTag, MarkupText, MarkupImage]]
+    stack: [AstNode]
     text: str
 
     def __init__(self):
@@ -121,13 +163,15 @@ class Parser(HTMLParser):
 
     def handle_data(self, data):
         self.text += data
+        plaintext = StrToken(data, pos=self.getpos())
         if len(self.stack) > 0:
             top = self.stack[-1]
             if isinstance(top, MarkupText) and len(top.styles) == 0:
                 # if the top of the stack is a MarkupText with no styles, add the data to it instead of creating a new instance
-                top.text.append(data)
+                top.text.append(plaintext)
+                return
 
-        self.stack.append(MarkupText(data, pos=self.getpos()))
+        self.stack.append(MarkupText(plaintext, pos=self.getpos()))
 
     def handle_endtag(self, tag):
         # walk back until we find the matching endtag

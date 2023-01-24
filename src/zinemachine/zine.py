@@ -4,7 +4,7 @@ import pathlib
 import sys
 import textwrap
 
-from .markup import Parser, MarkupImage, MarkupText
+from .markup import Parser, MarkupImage, MarkupText, StrToken, Position, MarkupGroup
 
 YELLOW = '\033[93m'
 ENDC = '\033[0m'
@@ -22,6 +22,12 @@ class Zine(object):
         'flip': False
     }
 
+    defaultTextwrapOptions = {
+        'width': 48,
+        'expand_tabs': True,
+        'tabsize': 4
+    }
+
     def __init__(self, path, category, metadata):
         if not isinstance(path, str):
             raise TypeError("expected path to have type 'str' but got '{}'".format(type(path)))
@@ -31,11 +37,6 @@ class Zine(object):
             raise TypeError("expected metadata to have type 'dict' but got '{}'".format(type(metadata)))
 
         self.maxFileSizeKb = 1024
-        self.textwrapOptions = {
-            'width': 48,
-            'expand_tabs': True,
-            'tabsize': 4
-        }
         self.imageOptions = {
             'fragmentHeight': 960,
             'center': True
@@ -44,6 +45,9 @@ class Zine(object):
         self.path = path
         self.category = category
         self.metadata = metadata
+        self.textwrapOptions = Zine.defaultTextwrapOptions
+
+        self.markup = None
 
     @staticmethod
     def extractMetadata(path):
@@ -75,9 +79,114 @@ class Zine(object):
 
         return metadata
 
+    @staticmethod
+    def wrapMarkup(markup, wrappedText: [str], wrappedTextPos=None):
+        if wrappedTextPos is None:
+            wrappedTextPos = [0, 0]
+
+        if isinstance(markup, MarkupGroup):
+            for child in markup.children:
+                Zine.wrapMarkup(child, wrappedText, wrappedTextPos)
+        if isinstance(markup, MarkupText):
+            for subtext in markup.text:
+                Zine.wrapMarkup(subtext, wrappedText, wrappedTextPos)
+        elif isinstance(markup, MarkupImage):
+            Zine.wrapMarkup(markup.caption, wrappedText, wrappedTextPos)
+        elif isinstance(markup, StrToken):
+            Zine.wrapStrToken(markup, wrappedText, wrappedTextPos)
+
+        return markup
+
+    @staticmethod
+    def wrapStrToken(strToken, wrappedText, wrappedTextPos):
+        """ Inserts newlines into the StrToken where each wrappedText element ends
+            Also strips whitespace at the end or beginning of a line
+            NOTE: leading/trailing newlines are stripped as well. These newlines will be automatically re-inserted into the markup because they are included in wrappedText as empty list elements (before wrapMarkup was called)
+        """
+        # list of substring ranges in the original StrToken that will be replaced in the output: (start, end, char)
+        # a range is used so we can strip whitespace when necessary
+        # the substitution character will always be either '\n' or '' (at the end of a line, or the beginning, respectively)
+        substitutionRanges = []
+
+        # advance through the StrToken by matching lines from wrappedText
+        strTokenIndex = 0
+        while strTokenIndex < len(strToken.text) and wrappedTextPos[0] < len(wrappedText):
+            remainingText = strToken.text[strTokenIndex:]
+            remainingLine = wrappedText[wrappedTextPos[0]][wrappedTextPos[1]:]
+
+            textLeadingWhitespaceLength = len(remainingText) - len(remainingText.lstrip())
+            lineLeadingWhitespaceLength = len(remainingLine) - len(remainingLine.lstrip())
+            extraWhitespaceLength = textLeadingWhitespaceLength - lineLeadingWhitespaceLength
+
+            if extraWhitespaceLength > 0:
+                # the strToken starts with whitespace not found in the wrappedText, we need to remove it because we are at the beginning or end of a line
+                substitutionRanges.append((strTokenIndex, strTokenIndex + extraWhitespaceLength, ''))
+                strTokenIndex += extraWhitespaceLength
+                continue
+
+            if len(remainingLine) < len(remainingText):
+                if not remainingText.startswith(remainingLine):
+                    raise Exception(f"linewrap error at index {strTokenIndex} ({wrappedTextPos[0]}, {wrappedTextPos[1]}): StrToken does not match wrappedText: got '{remainingText}' but was expecting '{remainingLine}'")
+
+                # the wrapped line is shorter than the remaining strToken, add a linebreak
+                strTokenIndex += len(remainingLine)
+                substitutionRanges.append((strTokenIndex, strTokenIndex, '\n'))
+
+                wrappedTextPos[0] += 1
+                wrappedTextPos[1] = 0
+            else:
+                if not remainingLine.startswith(remainingText):
+                    raise Exception(f"linewrap error ({wrappedTextPos[0]}, {wrappedTextPos[1]}): StrToken does not match wrappedText: got '{remainingText}' but was expecting '{remainingLine}'")
+
+                # this will always advance the index past the end of the string, ending the loop
+                strTokenIndex += len(remainingText)
+
+                # advance the wrappedTextPos without modifying strToken
+                wrappedTextPos[1] += len(remainingText)
+
+        # found all substitutions
+        # build the output string
+        lastIndex = 0
+        output = ''
+        for (start, end, c) in substitutionRanges:
+            output += strToken.text[lastIndex:start] + c
+            lastIndex = end
+
+        output += strToken.text[lastIndex:]
+
+        strToken.text = output
+        return strToken
+
+    def printZine(self, printer):
+        print("Loading zine '{}'...".format(self.path))
+        [markup, text] = self.loadMarkup()
+        if self.textwrapOptions is not None:
+            print("Text wrapping...")
+            # break up the file into a list of seperate lines and feed each line into the textwrapper individually
+            lines = "".join(text).splitlines()
+            wrapped = []
+            for line in lines:
+                sublines = textwrap.wrap(line, **self.textwrapOptions)
+                if len(sublines) == 0:
+                    # if textwrap returned an empty array, it was given an empty line that we want to preserve in the output
+                    wrapped.append('')
+                    continue
+                for s in sublines:
+                    wrapped.append(s)
+
+            Zine.wrapMarkup(markup, wrapped)
+
+        print("Printing...")
+        printer.set(**Zine.defaultStyles)
+        self.printMarkup(markup, printer, baseStyles=Zine.defaultStyles)
+        printer.text('\n\n')
+
     def loadMarkup(self):
         """Read the zine from disk (skipping header) and parse it as markup, along with a plaintext version that has been textwrapped using self.textwrapOptions
         """
+        if self.markup is not None:
+            return self.markup
+
         parser = Parser()
         text = ''
         with open(self.path, encoding="utf-8") as f:
@@ -112,7 +221,7 @@ class Zine(object):
                                 # the header ended abruptly
                                 foundText = True
 
-                # found to the beginning of the text
+                # found the beginning of the text
                 text = line + f.read(self.maxFileSizeKb)
 
                 if f.read(1) != '':
@@ -121,28 +230,24 @@ class Zine(object):
                 break
 
         parser.feed(text)
-        wrapped = textwrap.wrap("".join(parser.text), **self.textwrapOptions)
-        return [parser.stack, wrapped]
+        self.markup = MarkupGroup(parser.stack)
+        return [self.markup, parser.text]
 
-    def printMarkup(self, markup, baseStyles=dict()):
-        # TODO: so now we have to keep the AST and the textwrapped text in sync?
-        # I think we need to make a token for each data string and use them to match strs
-        # or we approximate and try to correct for extra newlines as we encounter them
+    def printMarkup(self, markup, printer, baseStyles=dict()):
+        if isinstance(markup, MarkupGroup):
+            for child in markup.children:
+                self.printMarkup(child, printer, baseStyles=baseStyles)
         if isinstance(markup, MarkupText):
+            styles = baseStyles | markup.styles
+            if styles != baseStyles:
+                printer.set(**styles)
             for subtext in markup.text:
-                if isinstance(subtext, str):
-                    self.printer.set(**(baseStyles | markup.styles))
-                    self.printer.text(subtext)
-                elif isinstance(subtext, MarkupText()):
-                    self.printMarkup(subtext, baseStyles)
-
-        elif MarkupImage():
-            self.printer.image(markup.src, **self.imageOptions)
-            self.printMarkup(markup.caption, baseStyles)
-
-        print("Printing zine '{}'".format(self.path))
-
-        self.printer.set(align="left", width=1, height=1, font="a", bold=True, underline=0, invert=False, flip=False)
+                self.printMarkup(subtext, printer, baseStyles=styles)
+        elif isinstance(markup, MarkupImage):
+            printer.image(markup.src, **self.imageOptions)
+            self.printMarkup(markup.caption, printer, baseStyles=baseStyles)
+        elif isinstance(markup, StrToken):
+            printer.text(markup.text)
 
 
 def createZineIndex(path='zines'):
