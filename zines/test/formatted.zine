@@ -1,0 +1,13 @@
+-----
+Title: Formatted Test
+Author: Elliot
+Description: Test with rich markup
+Date Published: 2023-06-01
+-----
+This is a test.
+<u>This line is underlined</u>
+<img src="test.png">Captioned image</img>
+
+Here is a line with <u>underlined text that is long enough to wrap</u> but then the underline stops partway through the line. Wow!
+
+That is the end. Thank you very much for testing!

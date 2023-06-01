@@ -58,7 +58,7 @@ class MarkupText:
     """Zine Markup AST Node - one or more sections of formatted text. may contain nested MarkupText nodes
     """
 
-    text: [Union[StrToken, 'MarkupText']]
+    text: List[Union[str, StrToken, 'MarkupText']]
     styles: dict
     pos: Optional[Position]
 
@@ -119,9 +119,9 @@ class MarkupGroup:
     """ Zine Markup AST Node - generic group containing zero or more children nodes
     Only used at the top level of the AST currently
     """
-    children: [AstNode]
+    children: List[AstNode]
 
-    def __init__(self, children: [AstNode]):
+    def __init__(self, children: List[AstNode]):
         self.children = children
 
     def __eq__(self, other):
@@ -150,7 +150,7 @@ class Parser(HTMLParser):
         parser.feed('hello <b>world</b>')
         # parser.stack == [MarkupText('hello'), MarkupText('world', {'bold':True})]
     """
-    stack: [AstNode]
+    stack: List[AstNode]
     text: str
 
     def __init__(self):
@@ -192,7 +192,7 @@ class Parser(HTMLParser):
                 underlineStyles = {'underline': 1}
                 if len(subexpressions) == 1 and isinstance(subexpressions[0], MarkupText) and \
                         (len(subexpressions[0].styles) == 0 or subexpressions[0].styles == underlineStyles):
-                    # if there is only one subexpression and it is a MarkupText with identical or no attributes, use it's text instead of nesting the entire object
+                    # if there is only one subexpression and it is a MarkupText with identical or no attributes, use its text instead of nesting the entire object
                     subexpressions = subexpressions[0].text
                 self.stack.append(MarkupText(subexpressions, underlineStyles, pos=startTag.pos))
                 return
@@ -211,7 +211,7 @@ class Parser(HTMLParser):
                     if not isinstance(subexpr, MarkupText):
                         raise Exception("markup parse error: '{}' is not allowed in an 'img' tag".format(type(subexpr).__name__))
 
-                captionPos = subexpressions[0].pos if len(subexpressions) > 0 else startTag.pos()
+                captionPos = subexpressions[0].pos if len(subexpressions) > 0 else startTag.pos
 
                 if len(subexpressions) == 1 and isinstance(subexpressions[0], MarkupText) and \
                         (len(subexpressions[0].styles) == 0 or subexpressions[0].styles == captionStyles):

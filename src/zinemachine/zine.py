@@ -3,8 +3,10 @@ import os
 import pathlib
 import sys
 import textwrap
+from typing import List
+from datetime import date
 
-from .markup import Parser, MarkupImage, MarkupText, StrToken, Position, MarkupGroup
+from .markup import Parser, MarkupImage, MarkupText, StrToken, MarkupGroup
 
 YELLOW = '\033[93m'
 ENDC = '\033[0m'
@@ -80,7 +82,7 @@ class Zine(object):
         return metadata
 
     @staticmethod
-    def wrapMarkup(markup, wrappedText: [str], wrappedTextPos=None):
+    def wrapMarkup(markup, wrappedText: List[str], wrappedTextPos=None):
         if wrappedTextPos is None:
             wrappedTextPos = [0, 0]
 
@@ -158,35 +160,33 @@ class Zine(object):
         return strToken
 
     def printZine(self, printer):
-        print("Loading zine '{}'...".format(self.path))
-        [markup, text] = self.loadMarkup()
-        if self.textwrapOptions is not None:
-            print("Text wrapping...")
-            # break up the file into a list of seperate lines and feed each line into the textwrapper individually
-            lines = "".join(text).splitlines()
-            wrapped = []
-            for line in lines:
-                sublines = textwrap.wrap(line, **self.textwrapOptions)
-                if len(sublines) == 0:
-                    # if textwrap returned an empty array, it was given an empty line that we want to preserve in the output
-                    wrapped.append('')
-                    continue
-                for s in sublines:
-                    wrapped.append(s)
+        if self.markup == None:
+            print("Loading zine '{}'...".format(self.path))
+            [markup, text] = self.loadMarkup()
+            if self.textwrapOptions is not None:
+                print("Text wrapping...")
+                # break up the file into a list of seperate lines and feed each line into the textwrapper individually
+                lines = "".join(text).splitlines()
+                wrapped = []
+                for line in lines:
+                    sublines = textwrap.wrap(line, **self.textwrapOptions)
+                    if len(sublines) == 0:
+                        # if textwrap returned an empty array, it was given an empty line that we want to preserve in the output
+                        wrapped.append('')
+                        continue
+                    for s in sublines:
+                        wrapped.append(s)
 
-            Zine.wrapMarkup(markup, wrapped)
+                Zine.wrapMarkup(markup, wrapped)
 
         print("Printing...")
         printer.set(**Zine.defaultStyles)
-        self.printMarkup(markup, printer, baseStyles=Zine.defaultStyles)
+        self.printMarkup(self.markup, printer, baseStyles=Zine.defaultStyles)
         printer.text('\n\n')
 
     def loadMarkup(self):
         """Read the zine from disk (skipping header) and parse it as markup, along with a plaintext version that has been textwrapped using self.textwrapOptions
         """
-        if self.markup is not None:
-            return self.markup
-
         parser = Parser()
         text = ''
         with open(self.path, encoding="utf-8") as f:
@@ -222,15 +222,16 @@ class Zine(object):
                                 foundText = True
 
                 # found the beginning of the text
-                text = line + f.read(self.maxFileSizeKb)
+                text = line + f.read(self.maxFileSizeKb * 1000)
 
                 if f.read(1) != '':
-                    print(f"Warning: exceeded max file size. only processing the first {self.maxFileSizeKb}Kb/{math.floor(os.fstat(f).st_size/1000)}Kb of zine '{self.path}'",
+                    print(f"Warning: exceeded max file size. only processing the first {self.maxFileSizeKb}Kb/{math.floor(os.fstat(f.fileno()).st_size/1000)}Kb of zine '{self.path}'",
                           file=sys.stderr)
                 break
 
         parser.feed(text)
         self.markup = MarkupGroup(parser.stack)
+        self.text = parser.text
         return [self.markup, parser.text]
 
     def printMarkup(self, markup, printer, baseStyles=dict()):
@@ -239,16 +240,75 @@ class Zine(object):
                 self.printMarkup(child, printer, baseStyles=baseStyles)
         if isinstance(markup, MarkupText):
             styles = baseStyles | markup.styles
-            if styles != baseStyles:
-                printer.set(**styles)
+            # if styles != baseStyles:
+                # printer.set(**styles)
+            printer.set(**styles)
+            # TODO: remember the previous style and don't set unless necessary
             for subtext in markup.text:
                 self.printMarkup(subtext, printer, baseStyles=styles)
         elif isinstance(markup, MarkupImage):
-            printer.image(markup.src, **self.imageOptions)
+            printer.image(os.path.join(self.path, markup.src), **self.imageOptions)
             self.printMarkup(markup.caption, printer, baseStyles=baseStyles)
         elif isinstance(markup, StrToken):
             printer.text(markup.text)
 
+    def printHeader(self, printer, width=48, border={
+            'top':         "╔═╦══════════════════════════════════════════╦═╗",
+            'top-left':    "╠═╝ ",                        'top-right': " ╚═╣",
+            'left':        "║ ",                                'right': " ║",
+            'bottom-left': "╠═╗ ",                     'bottom-right': " ╔═╣",
+            'bottom':      "╚═╩══════════════════════════════════════════╩═╝"
+    }):
+        topWidth = width - (len(border['top-left']) + len(border['top-right']))
+        innerWidth = width - (len(border['left']) + len(border['right']))
+        bottomWidth = width - (len(border['bottom-left']) + len(border['bottom-right']))
+
+        title = [line.center(topWidth if i == 0 else innerWidth) for i, line in enumerate(textwrap.wrap(self.metadata.get('title') or '', width=topWidth))]
+
+        # description = textWrapper.wrap(zine.metadata.get('"description') or '')
+        datepublished = date.fromisoformat(self.metadata['datepublished']) if 'datepublished' in self.metadata else None
+        author = self.metadata.get('author')
+
+        byline = [line.center(innerWidth) for line in textwrap.wrap(", ".join(([author] if author else [])
+                                                                    + ([str(datepublished.year)] if datepublished else [])), width=innerWidth)]
+        # todo: wrap category
+        category = self.category.center(bottomWidth)
+
+        printer.text(border['top'])
+        printer.text('\n')
+
+        for i, line in enumerate(title):
+            if i == 0:
+                printer.text(border['top-left'])
+                printer.text(line)
+                printer.text(border['top-right'])
+                printer.text('\n')
+            else:
+                printer.text(border['left'])
+                printer.text(line)
+                printer.text(border['right'])
+                printer.text('\n')
+
+        for line in byline:
+            printer.text(border['left'])
+            printer.text(line)
+            printer.text(border['right'])
+            printer.text('\n')
+
+        printer.text(border['bottom-left'])
+        printer.text(category)
+        printer.text(border['bottom-right'])
+        printer.text('\n')
+        printer.text(border['bottom'])
+        printer.text('\n')
+
+    def printFooter(self, printer):
+        printer.set(double_width=True, double_height=True)
+        printer.text("╔╤")
+        printer.set(underline=2, double_width=True, double_height=True)
+        printer.text("▓▓")
+        printer.set(double_width=True, double_height=True)
+        printer.text("╤╗\n╠╧══╧╣\n╚════╝\n")
 
 def createZineIndex(path='zines'):
     zineIndex = dict()

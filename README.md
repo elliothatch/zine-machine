@@ -5,7 +5,7 @@ The zine machine is a little box that spits short passages of text out of a rece
 It uses a raspberry pi zero w to drive the receipt printer over bluetooth and receive input from buttons. the python script `zine-machine.py` sends commands to the printer over a serial connection, using the module  [python-escpos](https://github.com/python-escpos/python-escpos) 
 
 #  usage
-Create directories in `categories/` to add new categories. `.zine` files placed in a category's directory are randomly selected when the button bound to that category is pressed.
+Create directories in `zines/` to add new categories. `.zine` and `.txt` files placed in a category's directory are randomly selected when the button bound to that category is pressed.
 
 ## .zine files
 A zine file is a text file (UTF-8) containing an optional metadata header followed by the text of a zine.
@@ -39,6 +39,11 @@ The zine machine recognizes these fields. More fields may be provided but may no
  - `Publisher`
  - `Date Published` - should be in ISO format. Recommended format: YYYY-MM-DD
  - `URL`
+
+ ### markup
+ `.zine` files support rich markup for enhanced features. Markup resembles a limited set of HTML tags. Some tags can be nested in other tags.
+  - `<u>Text</u>` - Underline
+  - `<img src="image.png">Caption</img>` - Insert an image with caption.
 
 # setup
 
@@ -94,6 +99,8 @@ sudo cp etc/systemd/system/receipt-bluetooth.service /etc/systemd/system/receipt
 sudo systemctl enable --now receipt-bluetooth.service
 ```
 
+This service does NOT connect to the printer, it only configures the bluetooth connection. The actual connection is made when the device is used in `zine-machine.py`
+
 ## python setup
 
 install the `[python-escpos](https://github.com/python-escpos/python-escpos) module
@@ -128,4 +135,6 @@ python -m zine-machine
 ```
 
 ## test
+```
 python -m unittest
+```

@@ -9,28 +9,13 @@ from datetime import date
 import textwrap
 from escpos.printer import Serial
 from serial.serialutil import SerialException
-import RPi.GPIO as GPIO
+#import RPi.GPIO as GPIO
 
 from .zine import Zine
-from .button import Button
 from .markup import Parser
 
 YELLOW = '\033[93m'
 ENDC = '\033[0m'
-
-
-def printZineMachineLogo(p):
-    # p.set(underline=2, double_width=True, double_height=True)
-    # p.text("╔╤▓▓╤╗\n")
-    # p.set(double_width=True, double_height=True)
-    # p.text("╠╧══╧╣\n╚════╝")
-
-    p.set(double_width=True, double_height=True)
-    p.text("╔╤")
-    p.set(underline=2, double_width=True, double_height=True)
-    p.text("▓▓")
-    p.set(double_width=True, double_height=True)
-    p.text("╤╗\n╠╧══╧╣\n╚════╝\n")
 
 
 def tryConnectBt(p, retries, timeout):
@@ -68,12 +53,16 @@ class ZineMachine(object):
         randomZines - {categoryName: {index: number, zines: Zine[]}} zines in a category are added to this list and shuffled. the next random zine selected is at the given index, which is incremented after selection
     """
 
-    def __init__(self, profile, enableGPIO=True, chordDelay=200/1000):
+    def __init__(self, profile, enableGPIO=True, chordDelay=200/1000, buttonClass=None):
         self.categories = dict()
         self.profile = profile
         self.buttons = dict()
         self.enableGPIO = enableGPIO
         self.chordDelay = chordDelay
+        self.buttonClass = buttonClass
+        if self.buttonClass == None:
+            from .button import Button
+            self.buttonClass = Button
         # self.chordTimer = Timer(chordTime, self.
 
         self.randomZines = dict()
@@ -81,15 +70,17 @@ class ZineMachine(object):
         self.dryRun = False
         self.echoStdOut = False
 
-        if self.enableGPIO:
-            GPIO.setmode(GPIO.BCM)
+        # if self.enableGPIO:
+            # GPIO.setmode(GPIO.BCM)
 
     def bindButton(self, category, pin):
+        if self.buttonClass == None:
+            return
         def onPressed(button):
             print("'{}' button pressed (pin {})".format(button.name, button.pin))
-            self.printRandomZineFromCategory(button.name, dryRun=self.dryRun, echoStdOut=self.echoStdOut)
+            self.printRandomZineFromCategory(button.name)
 
-        self.buttons[category] = Button(
+        self.buttons[category] = self.buttonClass(
             pin,
             name=category,
             onPressed=onPressed
@@ -110,7 +101,7 @@ class ZineMachine(object):
         buttons - {buttonName} - the names of the buttons
         """
 
-    def printRandomZineFromCategory(self, category, **kwargs):
+    def printRandomZineFromCategory(self, category):
         if category not in self.randomZines:
             # initialize random list
             c = self.categories.get(category)
@@ -128,9 +119,12 @@ class ZineMachine(object):
 
         self.randomZines[category]['index'] = (index + 1) % zineCount
 
-        self.printZine(zine, **kwargs)
+        zine.printHeader(self.printer)
+        zine.printZine(self.printer)
+        zine.printFooter(self.printer)
 
-    def initIndex(self, path='categories'):
+
+    def initIndex(self, path='zines'):
         for root, dirs, files in os.walk(path):
             if root != path:
                 p = pathlib.PurePath(root)
@@ -157,7 +151,7 @@ class ZineMachine(object):
             bytesize=8,
             parity='N',
             stopbits=1,
-            timeout=1.00,
+            timeout=1,
             dsrdtr=True)
 
         # wait for bluetooth connection to establish
@@ -172,165 +166,6 @@ class ZineMachine(object):
             sys.exit(1)
 
         print("Printer ready")
-
-    def printHeader(self, zine, dryRun=False, echoStdOut=False):
-        print(zine.metadata)
-        border = {
-            'top':         "╔═╦══════════════════════════════════════════╦═╗",
-            'top-left':    "╠═╝ ",                        'top-right': " ╚═╣",
-            'left':        "║ ",                                'right': " ║",
-            'bottom-left': "╠═╗ ",                     'bottom-right': " ╔═╣",
-            'bottom':      "╚═╩══════════════════════════════════════════╩═╝"
-        }
-
-        width = 48
-        topWidth = width - (len(border['top-left']) + len(border['top-right']))
-        innerWidth = width - (len(border['left']) + len(border['right']))
-        bottomWidth = width - (len(border['bottom-left']) + len(border['bottom-right']))
-
-        title = [line.center(topWidth if i == 0 else innerWidth) for i, line in enumerate(textwrap.wrap(zine.metadata.get('title') or '', width=topWidth))]
-
-        # description = textWrapper.wrap(zine.metadata.get('"description') or '')
-        datepublished = date.fromisoformat(zine.metadata['datepublished']) if 'datepublished' in zine.metadata else None
-        author = zine.metadata.get('author')
-
-        byline = [line.center(innerWidth) for line in textwrap.wrap(", ".join(([author] if author else [])
-                                                                    + ([str(datepublished.year)] if datepublished else [])), width=innerWidth)]
-        # todo: wrap category
-        category = zine.category.center(bottomWidth)
-
-        if echoStdOut:
-            print(border['top'], end='')
-            print()
-
-        if not dryRun:
-            self.printer.text(border['top'])
-            self.printer.text('\n')
-
-        for i, line in enumerate(title):
-            if i == 0:
-                if echoStdOut:
-                    print(border['top-left'], end='')
-                    print(line, end='')
-                    print(border['top-right'], end='')
-                    print()
-
-                if not dryRun:
-                    self.printer.text(border['top-left'])
-                    self.printer.text(line)
-                    self.printer.text(border['top-right'])
-                    self.printer.text('\n')
-            else:
-                if echoStdOut:
-                    print(border['left'], end='')
-                    print(line, end='')
-                    print(border['right'], end='')
-                    print()
-
-                if not dryRun:
-                    self.printer.text(border['left'])
-                    self.printer.text(line)
-                    self.printer.text(border['right'])
-                    self.printer.text('\n')
-
-        if echoStdOut:
-            for line in byline:
-                print(border['left'], end='')
-                print(line, end='')
-                print(border['right'], end='')
-                print()
-
-            print(border['bottom-left'], end='')
-            print(category, end='')
-            print(border['bottom-right'], end='')
-            print()
-            print(border['bottom'], end='')
-            print()
-
-        if not dryRun:
-            for line in byline:
-                self.printer.text(border['left'])
-                self.printer.text(line)
-                self.printer.text(border['right'])
-                self.printer.text('\n')
-
-            self.printer.text(border['bottom-left'])
-            self.printer.text(category)
-            self.printer.text(border['bottom-right'])
-            self.printer.text('\n')
-            self.printer.text(border['bottom'])
-            self.printer.text('\n')
-
-    def printZine(self, zine, dryRun=False, echoStdOut=False, **kwargs):
-        """
-        kwargs passed to TextWrapper
-        """
-        if not isinstance(zine, Zine):
-            raise TypeError("expected zine to have type 'Zine' but got '{}'".format(type(zine)))
-
-        kwargsDefault = {'width': 48, 'expand_tabs': True, 'tabsize': 4}
-
-        print("Printing zine '{}'".format(zine.path))
-
-        self.printer.set(align="left", width=1, height=1, font="a", bold=True, underline=0, invert=False, flip=False)
-
-        with open(zine.path, encoding="utf-8") as f:
-            # print header
-            self.printHeader(zine, dryRun=dryRun, echoStdOut=echoStdOut)
-
-            textWrapper = textwrap.TextWrapper(**{**kwargsDefault, **kwargs})
-
-            # check for file header
-            foundHeader = False
-            foundText = False
-            for line in f:
-                if foundText is False:
-                    # search for header
-                    if line.strip() == "":
-                        continue
-
-                    if foundHeader is False:
-                        if line.strip() == '-----':
-                            foundHeader = True
-                            continue
-                        else:
-                            # there is no header, consider the entire file text
-                            foundText = True
-                    else:
-                        # we are in the header
-                        if line.strip() == '-----':
-                            # found the end of the header
-                            foundText = True
-                            continue
-                        else:
-                            splitIndex = line.find(':')
-                            if splitIndex > -1:
-                                # skip metadata
-                                continue
-                            else:
-                                # the header ended abruptly
-                                foundText = True
-
-                # process line of text
-                wrapped = textWrapper.wrap(line)
-                for l in wrapped:
-                    if echoStdOut:
-                        print(l)
-                    if not dryRun:
-                        self.printer.text(l)
-                        self.printer.text("\n")
-                if(len(wrapped) == 0):
-                    if echoStdOut:
-                        print()
-                    if not dryRun:
-                        self.printer.text("\n")
-
-            self.printFooter(zine, dryRun=dryRun, echoStdOut=echoStdOut)
-            self.printer.text("\n\n\n\n\n")
-
-    def printFooter(self, zine, dryRun=False, echoStdOut=False):
-        if not dryRun:
-            printZineMachineLogo(self.printer)
 
 
 def printCodepages(p):

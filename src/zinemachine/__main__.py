@@ -2,6 +2,8 @@ import argparse
 import signal
 from .zinemachine import ZineMachine
 from .profile import LMP201
+from .consoleprinter import ConsolePrinter
+from .keyboardbutton import Button
 
 BUTTON_BLUE_PIN = 16
 BUTTON_YELLOW_PIN = 20
@@ -15,11 +17,18 @@ if __name__ == "__main__":
         description='Press a button to print a zine on a receipt printer')
 
     parser.add_argument('-c', action='append', nargs='*', help='CATEGORY PIN - bind button PIN to print random zine in CATEGORY')
-    parser.add_argument('--dry', default=False, help='dry run - print to stdout instead of the receipt printer')
+    # parser.add_argument('--dry', default=False, help='dry run - print to stdout instead of the receipt printer')
+    parser.add_argument('--printer')
+    parser.add_argument('--input')
 
     args = parser.parse_args()
 
-    zineMachine = ZineMachine(LMP201())
+    zineMachine = None
+
+    if args.input == "keyboard":
+        zineMachine = ZineMachine(LMP201(), buttonClass=Button)
+    else:
+        zineMachine = ZineMachine(LMP201())
 
     zineMachine.initIndex()
     print('{} zines loaded'.format(sum([len(v) for v in zineMachine.categories.values()])))
@@ -36,10 +45,14 @@ if __name__ == "__main__":
             print()
 
         print()
-    zineMachine.initPrinter()
 
-    zineMachine.dryRun = args.dry
-    zineMachine.echoStdOut = args.dry
+    if args.printer == "console":
+        zineMachine.printer = ConsolePrinter()
+    else:
+        zineMachine.initPrinter()
+
+    # zineMachine.dryRun = args.dry
+    # zineMachine.echoStdOut = args.dry
 
     # print(args)
     # zineMachine.bindButton('Test', BUTTON_BLUE_PIN)
@@ -54,6 +67,22 @@ if __name__ == "__main__":
                int(c[1]))
 
         zineMachine.bindButton(c[0], pin)
+
+    zine = zineMachine.categories['test']['zines/test/formatted.zine']
+    # zine = zineMachine.categories['queer-stuff']['zines/queer-stuff/DestroyGender.zine']
+    # zine = zineMachine.categories['diy']['zines/diy/primitivecooking/primitivecooking.zine']
+
+    zine.printHeader(zineMachine.printer)
+    zine.printZine(zineMachine.printer)
+    zine.printFooter(zineMachine.printer)
+
+    # zine.printHeader(zineMachine.printer)
+    # zine.printZine(zineMachine.printer)
+    # zine.printFooter(zineMachine.printer)
+
+    # print('\033[0m')
+    # print("Done")
+
 
     # zineMachine.printZine(zineMachine.categories['Theory']['categories/Theory/revolutionary-organisations-and-individual-commitment-monsieur-dupont.zine'])
     # zineMachine.printZine(zineMachine.categories['DIY']['categories/DIY/how-to-make-a-zine-machine-entry.zine'])
