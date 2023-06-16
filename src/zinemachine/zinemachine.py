@@ -17,35 +17,6 @@ from .markup import Parser
 YELLOW = '\033[93m'
 ENDC = '\033[0m'
 
-
-def tryConnectBt(p, retries, timeout):
-    """
-    tries to check if the printer is online.
-    the printer is considered offline if it is not ready to print or there is no paper.
-
-    this relies on the serial connection already being established. if we can't connect to the printer at all the library throws an exception. then we should crash and let systemd restart the process.
-
-    trying to recreate the serial connection in code is really slow because the library already handles trying to resend the data, so we don't bother
-
-    retries - number of times to retry connection
-    timeout - seconds to wait between retries
-    @returns True on success, False after all retries fail
-    """
-    for i in range(retries + 1):
-        # printerStatus = p.query_status(constants.RT_STATUS_ONLINE)
-        # if(len(printerStatus) > 0):
-        # and printerStatus[0] == 18
-
-        if(p.is_online()):
-            return True
-
-        print("Printer offline. Retrying in {}s... ({}/{})".format(timeout, i, retries))
-        sys.stdout.flush()
-        time.sleep(timeout)
-
-    return False
-
-
 class ZineMachine(object):
     """
         categories - {categoryName: {filePath: Zine}}
@@ -53,16 +24,12 @@ class ZineMachine(object):
         randomZines - {categoryName: {index: number, zines: Zine[]}} zines in a category are added to this list and shuffled. the next random zine selected is at the given index, which is incremented after selection
     """
 
-    def __init__(self, profile, enableGPIO=True, chordDelay=200/1000, buttonClass=None):
+    def __init__(self, printerManager, enableGPIO=True, chordDelay=200/1000, buttonClass=None):
+        self.printerManager = printerManager
         self.categories = dict()
-        self.profile = profile
         self.buttons = dict()
         self.enableGPIO = enableGPIO
         self.chordDelay = chordDelay
-        self.buttonClass = buttonClass
-        if self.buttonClass == None:
-            from .button import Button
-            self.buttonClass = Button
         # self.chordTimer = Timer(chordTime, self.
 
         self.randomZines = dict()
@@ -70,17 +37,20 @@ class ZineMachine(object):
         self.dryRun = False
         self.echoStdOut = False
 
-        # if self.enableGPIO:
-            # GPIO.setmode(GPIO.BCM)
+        if self.enableGPIO:
+            import RPi.GPIO as GPIO
+            GPIO.setmode(GPIO.BCM)
 
     def bindButton(self, category, pin):
-        if self.buttonClass == None:
+        if self.enableGPIO == False:
             return
+
+        from .button import Button
         def onPressed(button):
             print("'{}' button pressed (pin {})".format(button.name, button.pin))
             self.printRandomZineFromCategory(button.name)
 
-        self.buttons[category] = self.buttonClass(
+        self.buttons[category] = Button(
             pin,
             name=category,
             onPressed=onPressed
@@ -119,9 +89,9 @@ class ZineMachine(object):
 
         self.randomZines[category]['index'] = (index + 1) % zineCount
 
-        zine.printHeader(self.printer)
-        zine.printZine(self.printer)
-        zine.printFooter(self.printer)
+        zine.printHeader(self.printerManager.printer)
+        zine.printZine(self.printerManager.printer)
+        zine.printFooter(self.printerManager.printer)
 
 
     def initIndex(self, path='zines'):
@@ -143,25 +113,8 @@ class ZineMachine(object):
                     self.categories[baseCategory][p] = Zine(p, fullCategory, Zine.extractMetadata(p))
 
     def initPrinter(self):
-        # 9600 Baud, 8N1, Flow Control Enabled
-        self.printer = Serial(
-            profile=self.profile,
-            devfile='/dev/rfcomm0',
-            baudrate=9600,
-            bytesize=8,
-            parity='N',
-            stopbits=1,
-            timeout=1,
-            dsrdtr=True)
-
-        # wait for bluetooth connection to establish
-        isOnline = False
-        try:
-            isOnline = tryConnectBt(self.printer, 5, 1)
-        except SerialException as err:
-            print("Failed to connect to printer via Serial connection: {}".format(str(err)))
-
-        if(not isOnline):
+        connected = self.printerManager.connect()
+        if(not connected):
             print("Printer offline. Exiting...")
             sys.exit(1)
 

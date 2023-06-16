@@ -2,8 +2,8 @@ import argparse
 import signal
 from .zinemachine import ZineMachine
 from .profile import LMP201
-from .consoleprinter import ConsolePrinter
-from .keyboardbutton import Button
+from .consoleprintermanager import ConsolePrinterManager
+from .bluetoothprintermanager import BluetoothPrinterManager
 
 BUTTON_BLUE_PIN = 16
 BUTTON_YELLOW_PIN = 20
@@ -19,16 +19,19 @@ if __name__ == "__main__":
     parser.add_argument('-c', action='append', nargs='*', help='CATEGORY PIN - bind button PIN to print random zine in CATEGORY')
     # parser.add_argument('--dry', default=False, help='dry run - print to stdout instead of the receipt printer')
     parser.add_argument('--printer')
-    parser.add_argument('--input')
+    # TODO: add file output that just prints a file and exits. remove keyboardbutton and add flag to enable/disable gpio
+    parser.add_argument('--nogpio', action='store_true')
 
     args = parser.parse_args()
 
-    zineMachine = None
+    printerManager = None
 
-    if args.input == "keyboard":
-        zineMachine = ZineMachine(LMP201(), buttonClass=Button)
+    if args.printer == "console":
+        printerManager = ConsolePrinterManager()
     else:
-        zineMachine = ZineMachine(LMP201())
+        printerManager = BluetoothPrinterManager(LMP201())
+
+    zineMachine = ZineMachine(printerManager, enableGPIO=not args.nogpio)
 
     zineMachine.initIndex()
     print('{} zines loaded'.format(sum([len(v) for v in zineMachine.categories.values()])))
@@ -46,10 +49,6 @@ if __name__ == "__main__":
 
         print()
 
-    if args.printer == "console":
-        zineMachine.printer = ConsolePrinter()
-    else:
-        zineMachine.initPrinter()
 
     # zineMachine.dryRun = args.dry
     # zineMachine.echoStdOut = args.dry
@@ -68,13 +67,14 @@ if __name__ == "__main__":
 
         zineMachine.bindButton(c[0], pin)
 
-    zine = zineMachine.categories['test']['zines/test/formatted.zine']
+    # zine = zineMachine.categories['test']['zines/test/formatted.zine']
+    zine = zineMachine.categories['test']['zines/test/image-test/image-test.zine']
     # zine = zineMachine.categories['queer-stuff']['zines/queer-stuff/DestroyGender.zine']
     # zine = zineMachine.categories['diy']['zines/diy/primitivecooking/primitivecooking.zine']
 
-    zine.printHeader(zineMachine.printer)
-    zine.printZine(zineMachine.printer)
-    zine.printFooter(zineMachine.printer)
+    zine.printHeader(zineMachine.printerManager.printer)
+    zine.printZine(zineMachine.printerManager.printer)
+    zine.printFooter(zineMachine.printerManager.printer)
 
     # zine.printHeader(zineMachine.printer)
     # zine.printZine(zineMachine.printer)

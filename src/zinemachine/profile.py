@@ -10,6 +10,8 @@ class LMP201(capabilities.Profile):
 
         self.profile_data['name'] = 'LMP201'
         self.profile_data['notes'] = 'Modified from the Default profile to only include supported codepages. Portable BT 80mm Thermal Receipt Printer Mini Bill POS I3F0 (https://www.ebay.com/itm/363749704636?hash=item54b12c03bc:g:rg0AAOSwHP9iIChY&amdata=enc%3AAQAHAAAA8FCrxtaC2HGdZofnlIi9WIqNnFCXLrMXXeZWpD2MRljxLPtaKshA2LqINp2xVimVuyy1szOyRI7Oibi3ckWYkgl%2BY5g6qqaxyopGnkXtiXYNyczEzbRiHQbu2Zc5Dq9Nh8l%2FZtFEq8hlWWq00ZX4FvlKgP0qyj6R887dNAvtHmwD6ASuH%2FevF4OUb1zpHREvyLI2pg239tCEHy4yQIgkJFa7Y6jgQhfJPJ4rJGyvLgHpJ1I8syXTTIRS%2Bbzfe1y4OcLVIm2UM3%2FMkXDU0pVkYRC6VRSIOQZTEDV%2BtAfbZ0nVe%2BeRcG6mxXilhjQftn9RCQ%3D%3D%7Ctkp%3ABk9SR6z59dDfYA)'
+        self.profile_data['media']['width']['mm'] = 72
+        self.profile_data['media']['width']['pixels'] = 576
 
         # codepages that the printer has no glyphs for
         self.unsupportedCodepages = ['CP851', 'CP853', 'CP857', 'CP737', 'CP1254', 'CP1255', 'CP1256', 'CP1257', 'CP1258', 'RK1048']

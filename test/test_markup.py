@@ -21,6 +21,41 @@ class TestParser(unittest.TestCase):
         ]
         self.assertEqual(expected, self.parser.stack)
 
+    def test_underline2(self):
+        self.parser.feed('<u2>hello</u2>')
+        expected = [
+            MarkupText(StrToken('hello', pos=(1, 4)), {'underline': 2}, pos=(1, 0))
+        ]
+        self.assertEqual(expected, self.parser.stack)
+
+    def test_bold(self):
+        self.parser.feed('<b>hello</b>')
+        expected = [
+            MarkupText(StrToken('hello', pos=(1, 3)), {'bold': True}, pos=(1, 0))
+        ]
+        self.assertEqual(expected, self.parser.stack)
+
+    def test_h1(self):
+        self.parser.feed('<h1>hello</h1>')
+        expected = [
+            MarkupText(StrToken('hello', pos=(1, 4)), {'double_width': True, 'double_height': True}, pos=(1, 0))
+        ]
+        self.assertEqual(expected, self.parser.stack)
+
+    def test_invert(self):
+        self.parser.feed('<invert>hello</invert>')
+        expected = [
+            MarkupText(StrToken('hello', pos=(1, 8)), {'invert': True}, pos=(1, 0))
+        ]
+        self.assertEqual(expected, self.parser.stack)
+
+    def test_flip(self):
+        self.parser.feed('<flip>hello</flip>')
+        expected = [
+            MarkupText(StrToken('hello', pos=(1, 6)), {'flip': True}, pos=(1, 0))
+        ]
+        self.assertEqual(expected, self.parser.stack)
+
     def test_text_underline(self):
         self.parser.feed('hello <u>world</u>')
         expected = [
@@ -128,3 +163,7 @@ class TestParser(unittest.TestCase):
     def test_invalid_tag(self):
         with self.assertRaises(Exception):
             self.parser.feed('<u</u>')
+
+    def test_mismatchedTag(self):
+        with self.assertRaises(Exception):
+            self.parser.feed('<u>hello</b>')

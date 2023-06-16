@@ -15,8 +15,8 @@ ENDC = '\033[0m'
 class Zine(object):
     defaultStyles = {
         'align': 'left',
-        'width': 1,
-        'height': 1,
+        'double_width': False,
+        'double_height': False,
         'font': 'a',
         'bold': True,
         'underline': 0,
@@ -40,7 +40,7 @@ class Zine(object):
 
         self.maxFileSizeKb = 1024
         self.imageOptions = {
-            'fragmentHeight': 960,
+            'fragment_height': 960,
             'center': True
         }
 
@@ -182,7 +182,7 @@ class Zine(object):
         print("Printing...")
         printer.set(**Zine.defaultStyles)
         self.printMarkup(self.markup, printer, baseStyles=Zine.defaultStyles)
-        printer.text('\n\n')
+        print("Done printing.")
 
     def loadMarkup(self):
         """Read the zine from disk (skipping header) and parse it as markup, along with a plaintext version that has been textwrapped using self.textwrapOptions
@@ -247,7 +247,7 @@ class Zine(object):
             for subtext in markup.text:
                 self.printMarkup(subtext, printer, baseStyles=styles)
         elif isinstance(markup, MarkupImage):
-            printer.image(os.path.join(self.path, markup.src), **self.imageOptions)
+            printer.image(os.path.join(os.path.dirname(self.path), markup.src), **self.imageOptions)
             self.printMarkup(markup.caption, printer, baseStyles=baseStyles)
         elif isinstance(markup, StrToken):
             printer.text(markup.text)
@@ -274,6 +274,9 @@ class Zine(object):
         # todo: wrap category
         category = self.category.center(bottomWidth)
 
+        printer.set(**Zine.defaultStyles)
+        # print empty line to ensure we are at the beginning of a newline
+        printer.text('\n')
         printer.text(border['top'])
         printer.text('\n')
 
@@ -302,13 +305,33 @@ class Zine(object):
         printer.text(border['bottom'])
         printer.text('\n')
 
-    def printFooter(self, printer):
+    def printFooter(self, printer, width=48):
+        printer.set(**Zine.defaultStyles)
+        printer.text("═" * width)
+        printer.text("\n")
+
+        doublePadding = ((width//2) - 3) // 2
         printer.set(double_width=True, double_height=True)
+        printer.text(" " * doublePadding)
         printer.text("╔╤")
         printer.set(underline=2, double_width=True, double_height=True)
         printer.text("▓▓")
         printer.set(double_width=True, double_height=True)
-        printer.text("╤╗\n╠╧══╧╣\n╚════╝\n")
+        printer.text("╤╗")
+        printer.text("\n")
+
+        printer.text(" " * doublePadding)
+        printer.text("╠╧══╧╣")
+        printer.text("\n")
+
+        printer.text(" " * doublePadding)
+        printer.text("╚════╝")
+        printer.text("\n")
+
+        printer.set(**Zine.defaultStyles)
+        printer.text(" - Zine Machine\n")
+
+        printer.text("\n\n\n")
 
 def createZineIndex(path='zines'):
     zineIndex = dict()

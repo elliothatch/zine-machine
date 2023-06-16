@@ -56,13 +56,14 @@ class StrToken:
 
 class MarkupText:
     """Zine Markup AST Node - one or more sections of formatted text. may contain nested MarkupText nodes
+    TODO: wrong types: markup text actually can contain list[AstNode]. we might want to prevent certain nodes from being nested in a MarkupText node, and force them to be seperated under a parent MarkupGroup instead
     """
 
-    text: List[Union[str, StrToken, 'MarkupText']]
+    text: List[Union[StrToken, 'MarkupText']]
     styles: dict
     pos: Optional[Position]
 
-    def __init__(self, text: Union[StrToken, 'MarkupText', List[Union[str, StrToken, 'MarkupText']]], styles=dict(), pos: Optional[Position] = None):
+    def __init__(self, text: Union[StrToken, 'MarkupText', List[Union[StrToken, 'MarkupText']]], styles=dict(), pos: Optional[Position] = None):
         if not isinstance(text, list):
             text = [text]
 
@@ -188,13 +189,23 @@ class Parser(HTMLParser):
             subexpressions = self.stack[i+1:]
             self.stack = self.stack[:i]
 
-            if tag == 'u' or tag == 'u2':
-                underlineStyles = {'underline': 1}
+            # normal formatting tags
+            textFormattingTags = ['u', 'u2', 'b', 'h1', 'invert', 'flip']
+            if tag in textFormattingTags:
+                tagStyles = \
+                    {'underline': 1} if tag == 'u' else \
+                    {'underline': 2} if tag == 'u2' else \
+                    {'bold': True} if tag == 'b' else \
+                    {'double_width': True, 'double_height': True} if tag == 'h1' else \
+                    {'invert': True} if tag == 'invert' else \
+                    {'flip': True} if tag == 'flip' else \
+                    {}
+
                 if len(subexpressions) == 1 and isinstance(subexpressions[0], MarkupText) and \
-                        (len(subexpressions[0].styles) == 0 or subexpressions[0].styles == underlineStyles):
+                        (len(subexpressions[0].styles) == 0 or subexpressions[0].styles == tagStyles):
                     # if there is only one subexpression and it is a MarkupText with identical or no attributes, use its text instead of nesting the entire object
                     subexpressions = subexpressions[0].text
-                self.stack.append(MarkupText(subexpressions, underlineStyles, pos=startTag.pos))
+                self.stack.append(MarkupText(subexpressions, tagStyles, pos=startTag.pos))
                 return
             elif tag == 'img':
                 if 'src' not in startTag.attrs:
