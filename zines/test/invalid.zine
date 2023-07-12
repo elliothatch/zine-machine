@@ -1,0 +1,13 @@
+-----
+Title: Invalid Test
+Author:
+:bad description
+:
+-----
+<img src="missing.png">Missing image</img>
+<img src="invalid.zine">Wrong filetype</img>
+<img src="..">directory</img>
+<img>No src</img>
+<img src="image-test/test-1535x2244.png">Image too wide</img>
+<u>uh oh</h1>
+<bleh>boo</bleh>

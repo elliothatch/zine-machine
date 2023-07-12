@@ -75,9 +75,14 @@ class Zine(object):
                 value = line[splitIndex + 1:].strip()
 
                 if key in metadata:
-                    print("{}Warning (Zine.extratMetadata): '{}' contains duplicate metadata field '{}'. overwriting '{}' with '{}' {}".format(YELLOW, path, key, metadata[key], value, ENDC), file=sys.stderr)
+                    print("{}Warning (Zine.extractMetadata): '{}' contains duplicate metadata field '{}'. overwriting '{}' with '{}' {}".format(YELLOW, path, key, metadata[key], value, ENDC), file=sys.stderr)
 
                 metadata[key] = value
+
+        if 'title' not in metadata:
+            filename = os.path.splitext(os.path.basename(path))[0]
+            print(f"{YELLOW}Warning (Zine.extractMetadata): '{path}' does not define the required metadata field 'title'. Using '{filename}'{ENDC}", file=sys.stderr)
+            metadata['title'] = filename
 
         return metadata
 
@@ -230,27 +235,33 @@ class Zine(object):
                 break
 
         parser.feed(text)
+        if len(parser.errors) > 0:
+            raise Exception(f"Zine: Markup parser errors in '{self.path}'", parser.errors)
         self.markup = MarkupGroup(parser.stack)
         self.text = parser.text
         return [self.markup, parser.text]
 
     def printMarkup(self, markup, printer, baseStyles=dict()):
-        if isinstance(markup, MarkupGroup):
-            for child in markup.children:
-                self.printMarkup(child, printer, baseStyles=baseStyles)
-        if isinstance(markup, MarkupText):
-            styles = baseStyles | markup.styles
-            # if styles != baseStyles:
-                # printer.set(**styles)
-            printer.set(**styles)
-            # TODO: remember the previous style and don't set unless necessary
-            for subtext in markup.text:
-                self.printMarkup(subtext, printer, baseStyles=styles)
-        elif isinstance(markup, MarkupImage):
-            printer.image(os.path.join(os.path.dirname(self.path), markup.src), **self.imageOptions)
-            self.printMarkup(markup.caption, printer, baseStyles=baseStyles)
-        elif isinstance(markup, StrToken):
-            printer.text(markup.text)
+        try:
+            if isinstance(markup, MarkupGroup):
+                for child in markup.children:
+                    self.printMarkup(child, printer, baseStyles=baseStyles)
+            if isinstance(markup, MarkupText):
+                styles = baseStyles | markup.styles
+                # if styles != baseStyles:
+                    # printer.set(**styles)
+                printer.set(**styles)
+                # TODO: remember the previous style and don't set unless necessary
+                for subtext in markup.text:
+                    self.printMarkup(subtext, printer, baseStyles=styles)
+            elif isinstance(markup, MarkupImage):
+                printer.image(os.path.join(os.path.dirname(self.path), markup.src), **self.imageOptions)
+                self.printMarkup(markup.caption, printer, baseStyles=baseStyles)
+            elif isinstance(markup, StrToken):
+                printer.text(markup.text)
+        except Exception as error:
+            print(f"Zine.printMarkup error ({markup.pos}, {self.path}) {str(error)}")
+            printer.text(str(error) + "\n")
 
     def printHeader(self, printer, width=48, border={
             'top':         "╔═╦══════════════════════════════════════════╦═╗",
@@ -332,22 +343,3 @@ class Zine(object):
         printer.text(" - Zine Machine\n")
 
         printer.text("\n\n\n")
-
-def createZineIndex(path='zines'):
-    zineIndex = dict()
-    for root, dirs, files in os.walk(path):
-        if root != path:
-            p = pathlib.PurePath(root)
-            baseCategory = p.parts[1]
-            if baseCategory not in zineIndex:
-                zineIndex[baseCategory] = {}
-
-            fullCategory = "/".join(p.parts[1:])
-
-            for f in files:
-                zineExts = ['.zine', '.txt']
-                if os.path.splitext(f)[1] not in zineExts:
-                    continue
-
-                p = os.path.join(root, f)
-                zineIndex[baseCategory][p] = Zine(p, fullCategory, Zine.extractMetadata(p))

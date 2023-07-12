@@ -96,6 +96,10 @@ class ZineMachine(object):
 
     def initIndex(self, path='zines'):
         for root, dirs, files in os.walk(path):
+            # ignore hidden directories
+            dirs[:] = [d for d in dirs if not d[0] == '.']
+            # ignore hidden files
+            files = [f for f in files if not f[0] == '.']
             if root != path:
                 p = pathlib.PurePath(root)
                 baseCategory = p.parts[1]

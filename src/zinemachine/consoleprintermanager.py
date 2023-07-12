@@ -1,7 +1,7 @@
 from .consoleprinter import ConsolePrinter
 
-""" Implements the PrinterManager interface"""
 class ConsolePrinterManager(object):
+    """ Implements the PrinterManager interface"""
     def __init__(self):
         self.printerType = 'console'
         self.printer = ConsolePrinter()

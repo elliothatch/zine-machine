@@ -10,15 +10,53 @@ from html.parser import HTMLParser
 
 Position = tuple[int, int]
 
+class MarkupError(Exception):
+    def __init__(self, message: str, pos: Optional[Position]=None):
+        super().__init__()
+        self.message = message
+        self.pos = pos
+
+
+class UnknownTagError(MarkupError):
+    def __init__(self, tag, pos: Optional[Position]=None):
+        super().__init__(f"Unknown Tag '{tag}'", pos=pos)
+        self.tag = tag
+
+class InvalidAttributeError(MarkupError):
+    def __init__(self, message: str, tag: str, attribute: str, pos: Optional[Position]=None):
+        super().__init__(message, pos=pos)
+        self.tag = tag
+        self.attribute = attribute
+
+class InvalidTagError(MarkupError):
+    def __init__(self, message: str, tag: str, pos: Optional[Position]=None):
+        super().__init__(message, pos=pos)
+        self.tag = tag
+
+class MissingOpeningTagError(MarkupError):
+    def __init__(self, tag: str, pos: Optional[Position]=None):
+        super().__init__(f"Missing opening tag '<{tag}>'", pos=pos)
+        self.tag = tag
+
+class MissingClosingTagError(MarkupError):
+    def __init__(self, tag: str, pos: Optional[Position]=None):
+        super().__init__(f"Missing closing tag '</{tag}>'", pos=pos)
+        self.tag = tag
+
+class MismatchedTagError(MarkupError):
+    def __init__(self, openingTag: str, closingTag: str, pos: Optional[Position]=None):
+        super().__init__(f"Closing tag '</{closingTag}>' does not match opening tag '<{openingTag}>'", pos=pos)
+        self.openingTag = openingTag
+        self.closingTag = closingTag
+
 
 class StartTag:
-    """Zine Markup AST Node - start tag (e.g. <img src="pic.png">)
-    """
+    """Zine Markup AST Node - start tag (e.g. <img src="pic.png">)"""
     tag: str
     attrs: dict
     pos: Optional[Position]
 
-    def __init__(self, tag: str, attrs=dict(), pos: Optional[Position] = None):
+    def __init__(self, tag: str, attrs=dict(), pos: Optional[Position]=None):
         self.tag = tag
         self.attrs = attrs
         self.pos = pos
@@ -39,7 +77,7 @@ class StrToken:
     text: str
     pos: Optional[Position]
 
-    def __init__(self, text: str, pos: Optional[Position] = None):
+    def __init__(self, text: str, pos: Optional[Position]=None):
         self.text = text
         self.pos = pos
 
@@ -63,7 +101,7 @@ class MarkupText:
     styles: dict
     pos: Optional[Position]
 
-    def __init__(self, text: Union[StrToken, 'MarkupText', List[Union[StrToken, 'MarkupText']]], styles=dict(), pos: Optional[Position] = None):
+    def __init__(self, text: Union[StrToken, 'MarkupText', List[Union[StrToken, 'MarkupText']]], styles=dict(), pos: Optional[Position]=None):
         if not isinstance(text, list):
             text = [text]
 
@@ -85,13 +123,12 @@ class MarkupText:
 
 
 class MarkupImage:
-    """Zine Markup AST Node - image with optional caption
-    """
+    """Zine Markup AST Node - image with optional caption"""
     src: str
     caption: Optional[MarkupText]
     pos: Optional[Position]
 
-    def __init__(self, src: str, caption: Optional[MarkupText] = None, pos: Optional[Position] = None):
+    def __init__(self, src: str, caption: Optional[MarkupText]=None, pos: Optional[Position]=None):
         """
         src -- path to image
         caption -- the image caption.
@@ -121,9 +158,11 @@ class MarkupGroup:
     Only used at the top level of the AST currently
     """
     children: List[AstNode]
+    pos: Optional[Position]
 
-    def __init__(self, children: List[AstNode]):
+    def __init__(self, children: List[AstNode], pos: Optional[Position]=None):
         self.children = children
+        self.pos = pos
 
     def __eq__(self, other):
         if not isinstance(other, MarkupGroup):
@@ -132,7 +171,7 @@ class MarkupGroup:
         return self.children == other.children
 
     def __repr__(self):
-        return f'MarkupGroup(children={self.children})'
+        return f'MarkupGroup(children={self.children}, pos={self.pos})'
 
 
 class Parser(HTMLParser):
@@ -153,11 +192,13 @@ class Parser(HTMLParser):
     """
     stack: List[AstNode]
     text: str
+    errors: List[MarkupError]
 
     def __init__(self):
         super().__init__()
         self.stack = []
         self.text = ''
+        self.errors = []
 
     def handle_starttag(self, tag, attrs):
         self.stack.append(StartTag(tag, dict(attrs), pos=self.getpos()))
@@ -183,7 +224,7 @@ class Parser(HTMLParser):
 
             if startTag.tag != tag:
                 # interleaving not allowed
-                raise Exception("markup parse error: starting tag '{}' does not match closing tag '{}'".format(startTag.tag, tag))
+                self.errors.append(MismatchedTagError(startTag.tag, tag, self.getpos()))
 
             # found the opening tag
             subexpressions = self.stack[i+1:]
@@ -209,7 +250,8 @@ class Parser(HTMLParser):
                 return
             elif tag == 'img':
                 if 'src' not in startTag.attrs:
-                    raise Exception("markup parse error: 'img' missing attribute 'src'")
+                    self.errors.append(InvalidAttributeError("'<img>' tag missing required attribute 'src'", 'img', 'src', pos=self.getpos()))
+                    return
 
                 captionStyles = {'align': 'center'}
 
@@ -220,7 +262,8 @@ class Parser(HTMLParser):
                 # check if subexpressions are valid nodes (MarkupText)
                 for subexpr in subexpressions:
                     if not isinstance(subexpr, MarkupText):
-                        raise Exception("markup parse error: '{}' is not allowed in an 'img' tag".format(type(subexpr).__name__))
+                        self.errors.append(InvalidTagError(f"'{type(subexpr).__name__}' node is not allowed in an 'img' tag", 'img', pos=self.getpos()))
+                        return
 
                 captionPos = subexpressions[0].pos if len(subexpressions) > 0 else startTag.pos
 
@@ -233,6 +276,7 @@ class Parser(HTMLParser):
                 self.stack.append(MarkupImage(startTag.attrs['src'], caption, pos=startTag.pos))
                 return
             else:
-                raise Exception("markup parse error: unknown tag '<{}>'".format(tag))
+                self.errors.append(UnknownTagError(tag, pos=self.getpos()))
+                return
 
-        raise Exception("markup parse error: no matching opening tag for '</{}>'".format(tag))
+        self.errors.append(MissingOpeningTagError(tag, pos=self.getpos()))

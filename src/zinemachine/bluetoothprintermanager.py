@@ -3,8 +3,8 @@ import time
 from escpos.printer import Serial
 from serial.serialutil import SerialException
 
-""" Implements the PrinterManager interface"""
 class BluetoothPrinterManager:
+    """ Implements the PrinterManager interface"""
     def __init__(self, profile):
         self.printerType = 'bluetooth-serial'
         self.profile = profile

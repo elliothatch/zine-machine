@@ -45,6 +45,11 @@ The zine machine recognizes these fields. More fields may be provided but may no
   - `<u>Text</u>` - Underline
   - `<img src="image.png">Caption</img>` - Insert an image with caption.
 
+### indexing
+Files with the `.zine` or `.txt` extension are interpreted as zines.
+
+Directories and files that begin with a `.` (period) are ignored.
+
 # setup
 
 ## flash raspberry pi OS
