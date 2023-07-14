@@ -6,7 +6,7 @@ from .zinemachine import ZineMachine
 from .profile import LMP201
 from .consoleprintermanager import ConsolePrinterManager
 from .bluetoothprintermanager import BluetoothPrinterManager
-from .zinevalidator import validateZine
+from .zinevalidator import ZineValidator
 
 BUTTON_BLUE_PIN = 16
 BUTTON_YELLOW_PIN = 20
@@ -18,27 +18,8 @@ YELLOW = '\033[93m'
 BOLD = '\033[1m'
 ENDC = '\033[0m'
 
-def printValidationDiagnostics(path, diagnostics):
-    errors = 0
-    warnings = 0
-    for e in diagnostics:
-        color = ""
-        if e.level == 'error':
-            color = RED
-            errors += 1 
-        elif e.level == 'warning':
-            color = YELLOW
-            warnings += 1 
-
-        print(f"{path}:{e.pos[0]}:{e.pos[1]} {color}{e.level}{ENDC}: {BOLD}{type(e).__name__}: {e.message}{ENDC}")
-        if len(e.text) > 0:
-            print(f"   {e.text}", end="")
-            print(f"   {' ' * (e.pos[1] - 1)}^")
-
-    return (errors, warnings)
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser(
         prog='zine-machine',
         description='Press a button to print a zine on a receipt printer')
@@ -49,84 +30,24 @@ if __name__ == "__main__":
     # TODO: add file output that just prints a file and exits. remove keyboardbutton and add flag to enable/disable gpio
     parser.add_argument('--nogpio', action='store_true')
 
-    parser.add_argument('--validate', nargs='?', const='zines')
+    parser.add_argument('--validate', nargs='?', const='zines', metavar='PATH',
+                        help='Check a zine file or directory of zines for formatting/printability issues, then exit. If specified with no value, uses $PWD/%(const)s')
     # if provided with no arguments, validates all zines in the './zines' directory. one argument can be provided to specify a specific zine or directory to validate
+
+    parser.add_argument('--resize', nargs='?', type=int, const=576, metavar='MAXWIDTH_PX',
+                        help='If using --validate, also resize images that are larger than the provided width (default: %(const)s)')
 
     args = parser.parse_args()
 
     if args.validate:
-        # parser = argparse.ArgumentParser(
-            # prog='sanitize-text',
-            # description='Read a text file and outputs an altered version to stdout where unsupported unicode characters are replaced by similar glyphs. Also prints warnings to stderr for characters that couldn\'t be converted')
+        validator = ZineValidator() if args.resize is None else ZineValidator(resizeImages=True, maxImageWidth=args.resize)
+        diagnostics = validator.validateDirectory(args.validate)
+        if len(diagnostics[0]) > 0:
+            sys.exit(1)
+        elif len(diagnostics[1]) > 0:
+            sys.exit(2)
 
-        # parser.add_argument('filename')
-        # parser.add_argument('-o', '--output')
-
-        # args = parser.parse_args()
-
-        print(f"Validating '{os.path.abspath(args.validate)}'...")
-
-        if os.path.isdir(args.validate):
-            invalidZines = []
-            totalErrors = 0
-            totalWarnings = 0
-            for root, dirs, files in os.walk(args.validate):
-                # ignore hidden directories
-                dirs[:] = [d for d in dirs if not d[0] == '.']
-                # ignore hidden files
-                files = [f for f in files if not f[0] == '.']
-                for f in files:
-                    zineExts = ['.zine', '.txt']
-                    if os.path.splitext(f)[1] not in zineExts:
-                        continue
-
-                    path = os.path.join(root, f)
-                    print(f"{path}... ", end="")
-                    diagnostics = validateZine(path)
-                    if len(diagnostics) == 0:
-                        print("OK")
-                        continue
-
-                    invalidZines.append((path, diagnostics))
-                    errorCount = sum(1 for d in diagnostics if d.level == 'error')
-                    warningCount = sum(1 for d in diagnostics if d.level == 'warning')
-                    totalErrors += errorCount
-                    totalWarnings += warningCount
-                    if errorCount > 0:
-                        print(RED, end="")
-                    else:
-                        print(YELLOW, end="")
-                    print(f"{errorCount} errors. {warningCount} warnings.{ENDC}")
-
-            for zine in invalidZines:
-                printValidationDiagnostics(zine[0], zine[1])
-
-            if totalErrors > 0:
-                print(RED, end="")
-            elif totalWarnings > 0:
-                print(YELLOW, end="")
-            print(f"Validation complete. {len(invalidZines)} zines failed validation. {totalErrors} errors. {totalWarnings} warnings.{ENDC}")
-            if totalErrors > 0:
-                sys.exit(1)
-            elif totalWarnings > 0:
-                sys.exit(2)
-            sys.exit(0)
-        else:
-            # single file
-            path = args.validate
-            diagnostics = validateZine(path)
-            diagnosticCounts = printValidationDiagnostics(path, diagnostics)
-            if diagnosticCounts[0] > 0:
-                print(RED, end="")
-            elif diagnosticCounts[1] > 0:
-                print(YELLOW, end="")
-            print(f"Validation complete. {diagnosticCounts[0]} errors. {diagnosticCounts[1]} warnings.{ENDC}")
-
-            if diagnosticCounts[0] > 0:
-                sys.exit(1)
-            elif diagnosticCounts[1] > 0:
-                sys.exit(2)
-            sys.exit(0)
+        sys.exit(0)
 
     printerManager = None
 
@@ -172,13 +93,13 @@ if __name__ == "__main__":
         zineMachine.bindButton(c[0], pin)
 
     # zine = zineMachine.categories['test']['zines/test/formatted.zine']
-    zine = zineMachine.categories['test']['zines/test/image-test/image-test.zine']
+    # zine = zineMachine.categories['test']['zines/test/image-test/image-test.zine']
     # zine = zineMachine.categories['queer-stuff']['zines/queer-stuff/DestroyGender.zine']
     # zine = zineMachine.categories['diy']['zines/diy/primitivecooking/primitivecooking.zine']
 
-    zine.printHeader(zineMachine.printerManager.printer)
-    zine.printZine(zineMachine.printerManager.printer)
-    zine.printFooter(zineMachine.printerManager.printer)
+    # zine.printHeader(zineMachine.printerManager.printer)
+    # zine.printZine(zineMachine.printerManager.printer)
+    # zine.printFooter(zineMachine.printerManager.printer)
 
     # zine.printHeader(zineMachine.printer)
     # zine.printZine(zineMachine.printer)
