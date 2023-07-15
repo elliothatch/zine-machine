@@ -8,6 +8,8 @@ CYAN = "\033[0;36m"
 class ConsolePrinter(object):
     def __init__(self):
         self.styles = {}
+        # add void flush function
+        self.device = type('obj', (object,), {'flush': lambda: None})
 
     def set(self, **styles):
         # print(f"Set {styles}")

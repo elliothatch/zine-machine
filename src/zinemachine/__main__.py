@@ -58,6 +58,9 @@ if __name__ == "__main__":
 
     zineMachine = ZineMachine(printerManager, enableGPIO=not args.nogpio)
 
+    if args.printer == "console":
+        zineMachine.secondsPerCharacter = 0
+
     zineMachine.initIndex()
     print('{} zines loaded'.format(sum([len(v) for v in zineMachine.categories.values()])))
     for k, v in zineMachine.categories.items():
@@ -92,14 +95,20 @@ if __name__ == "__main__":
 
         zineMachine.bindButton(c[0], pin)
 
+    # zineMachine.printRandomZineFromCategory('diy')
     # zine = zineMachine.categories['test']['zines/test/formatted.zine']
     # zine = zineMachine.categories['test']['zines/test/image-test/image-test.zine']
+    # zine = zineMachine.categories['test']['zines/test/lorem-ipsum-2500.zine']
     # zine = zineMachine.categories['queer-stuff']['zines/queer-stuff/DestroyGender.zine']
     # zine = zineMachine.categories['diy']['zines/diy/primitivecooking/primitivecooking.zine']
 
     # zine.printHeader(zineMachine.printerManager.printer)
+    # zineMachine.printerManager.printer.device.flush()
     # zine.printZine(zineMachine.printerManager.printer)
+    # zineMachine.printerManager.printer.device.flush()
     # zine.printFooter(zineMachine.printerManager.printer)
+    # zineMachine.printerManager.printer.device.flush()
+
 
     # zine.printHeader(zineMachine.printer)
     # zine.printZine(zineMachine.printer)

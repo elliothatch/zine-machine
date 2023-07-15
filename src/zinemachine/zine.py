@@ -164,30 +164,36 @@ class Zine(object):
         strToken.text = output
         return strToken
 
+    def initMarkup(self):
+        """
+        Load markup from disk and wrap text.
+        """
+        print("Loading zine '{}'...".format(self.path))
+        [markup, text] = self.loadMarkup()
+        if self.textwrapOptions is not None:
+            print("Text wrapping...")
+            # break up the file into a list of seperate lines and feed each line into the textwrapper individually
+            lines = "".join(text).splitlines()
+            wrapped = []
+            for line in lines:
+                sublines = textwrap.wrap(line, **self.textwrapOptions)
+                if len(sublines) == 0:
+                    # if textwrap returned an empty array, it was given an empty line that we want to preserve in the output
+                    wrapped.append('')
+                    continue
+                for s in sublines:
+                    wrapped.append(s)
+
+            Zine.wrapMarkup(markup, wrapped)
+
     def printZine(self, printer):
         if self.markup == None:
-            print("Loading zine '{}'...".format(self.path))
-            [markup, text] = self.loadMarkup()
-            if self.textwrapOptions is not None:
-                print("Text wrapping...")
-                # break up the file into a list of seperate lines and feed each line into the textwrapper individually
-                lines = "".join(text).splitlines()
-                wrapped = []
-                for line in lines:
-                    sublines = textwrap.wrap(line, **self.textwrapOptions)
-                    if len(sublines) == 0:
-                        # if textwrap returned an empty array, it was given an empty line that we want to preserve in the output
-                        wrapped.append('')
-                        continue
-                    for s in sublines:
-                        wrapped.append(s)
-
-                Zine.wrapMarkup(markup, wrapped)
+            self.initMarkup()
 
         print("Printing...")
         printer.set(**Zine.defaultStyles)
         self.printMarkup(self.markup, printer, baseStyles=Zine.defaultStyles)
-        print("Done printing.")
+        printer.text('\n')
 
     def loadMarkup(self):
         """Read the zine from disk (skipping header) and parse it as markup, along with a plaintext version that has been textwrapped using self.textwrapOptions

@@ -22,14 +22,17 @@ class ZineMachine(object):
         categories - {categoryName: {filePath: Zine}}
         buttons - {categoryName: Button}
         randomZines - {categoryName: {index: number, zines: Zine[]}} zines in a category are added to this list and shuffled. the next random zine selected is at the given index, which is incremented after selection
+        secondsPerCharacter: estimate for how long it takes to print a single character on the printer. used to block button presses until the print is complete.
     """
 
-    def __init__(self, printerManager, enableGPIO=True, chordDelay=200/1000, buttonClass=None):
+    def __init__(self, printerManager, enableGPIO=True, chordDelay=200/1000, buttonClass=None, secondsPerCharacter=0.0022):
         self.printerManager = printerManager
         self.categories = dict()
         self.buttons = dict()
         self.enableGPIO = enableGPIO
         self.chordDelay = chordDelay
+        self.secondsPerCharacter = secondsPerCharacter
+        self.printing = False
         # self.chordTimer = Timer(chordTime, self.
 
         self.randomZines = dict()
@@ -49,6 +52,7 @@ class ZineMachine(object):
         def onPressed(button):
             print("'{}' button pressed (pin {})".format(button.name, button.pin))
             self.printRandomZineFromCategory(button.name)
+
 
         self.buttons[category] = Button(
             pin,
@@ -72,6 +76,11 @@ class ZineMachine(object):
         """
 
     def printRandomZineFromCategory(self, category):
+        if self.printing is True:
+            print(f"Printing already in progress. Ignoring request to print '{category}'")
+            return
+
+        self.printing = True
         if category not in self.randomZines:
             # initialize random list
             c = self.categories.get(category)
@@ -89,9 +98,23 @@ class ZineMachine(object):
 
         self.randomZines[category]['index'] = (index + 1) % zineCount
 
+        # estimate print time, to prevent printing another zine before this one is finished 
+        # printZine automatically initializes markup when needed, but we manually load it here so we can get the length of the text for the time estimate
+        zine.initMarkup()
+        printTime = self.secondsPerCharacter * len(zine.text)
+        print(f"{len(zine.text)} characters long. Estimated print time: {printTime} seconds.")
+
         zine.printHeader(self.printerManager.printer)
+        self.printerManager.printer.device.flush()
         zine.printZine(self.printerManager.printer)
+        self.printerManager.printer.device.flush()
         zine.printFooter(self.printerManager.printer)
+        self.printerManager.printer.device.flush()
+
+        print("Print buffer flushed. Sleeping...")
+        time.sleep(printTime)
+        self.printing = False
+        print("Done printing.")
 
 
     def initIndex(self, path='zines'):

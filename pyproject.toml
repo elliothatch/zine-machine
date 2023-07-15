@@ -15,7 +15,8 @@ requires-python = ">=3.7"
 
 dependencies = [
 	"python-escpos==3.0a8",
-	"RPi.GPIO"
+	"RPi.GPIO",
+	"Pillow>=9.1.0"
 ]
 
 classifiers = [
