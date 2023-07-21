@@ -9,7 +9,6 @@ from datetime import date
 import textwrap
 from escpos.printer import Serial
 from serial.serialutil import SerialException
-#import RPi.GPIO as GPIO
 
 from .zine import Zine
 from .markup import Parser
@@ -20,64 +19,22 @@ ENDC = '\033[0m'
 class ZineMachine(object):
     """
         categories - {categoryName: {filePath: Zine}}
-        buttons - {categoryName: Button}
         randomZines - {categoryName: {index: number, zines: Zine[]}} zines in a category are added to this list and shuffled. the next random zine selected is at the given index, which is incremented after selection
         secondsPerCharacter: estimate for how long it takes to print a single character on the printer. used to block button presses until the print is complete.
     """
 
-    def __init__(self, printerManager, enableGPIO=True, chordDelay=200/1000, buttonClass=None, secondsPerCharacter=0.0022):
+    def __init__(self, printerManager, secondsPerCharacter=0.0022, basePrintTime=2.0):
         self.printerManager = printerManager
         self.categories = dict()
-        self.buttons = dict()
-        self.enableGPIO = enableGPIO
-        self.chordDelay = chordDelay
         self.secondsPerCharacter = secondsPerCharacter
+        self.basePrintTime = basePrintTime
         self.printing = False
-        # self.chordTimer = Timer(chordTime, self.
 
         self.randomZines = dict()
 
-        self.dryRun = False
-        self.echoStdOut = False
-
-        if self.enableGPIO:
-            import RPi.GPIO as GPIO
-            GPIO.setmode(GPIO.BCM)
-
-    def bindButton(self, category, pin):
-        if self.enableGPIO == False:
-            return
-
-        from .button import Button
-        def onPressed(button):
-            print("'{}' button pressed (pin {})".format(button.name, button.pin))
-            self.printRandomZineFromCategory(button.name)
-
-
-        self.buttons[category] = Button(
-            pin,
-            name=category,
-            onPressed=onPressed
-            # onPressed=lambda button: print("{} pressed".format(b.name)),
-            # onReleased=lambda button: print("{} released".format(b.name))
-        )
-
-        print("Bound button on pin {} to category '{}'".format(pin, category))
-
-    # def addButtonChord(self, buttons):
-        """
-        bind a callback function to the pressing/releasing of a chord of buttons
-        the buttons used must have been previously bound to a zine category with bindButton
-
-        when a button is pressed, start self.chordTimer for self.chordDelay. if the timer is already running, reset it and start over.
-        when the timer expires, an action is taken based on which buttons are still pressed (so accidentally tapping the wrong button is not considered, although it will extend the chord delay)
-
-        buttons - {buttonName} - the names of the buttons
-        """
-
     def printRandomZineFromCategory(self, category):
         if self.printing is True:
-            print(f"Printing already in progress. Ignoring request to print '{category}'")
+            print(f"{YELLOW}Printing already in progress. Ignoring request to print '{category}'{ENDC}")
             return
 
         self.printing = True
@@ -101,7 +58,7 @@ class ZineMachine(object):
         # estimate print time, to prevent printing another zine before this one is finished 
         # printZine automatically initializes markup when needed, but we manually load it here so we can get the length of the text for the time estimate
         zine.initMarkup()
-        printTime = self.secondsPerCharacter * len(zine.text)
+        printTime = self.secondsPerCharacter * len(zine.text) + self.basePrintTime
         print(f"{len(zine.text)} characters long. Estimated print time: {printTime} seconds.")
 
         zine.printHeader(self.printerManager.printer)

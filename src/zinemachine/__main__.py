@@ -7,6 +7,7 @@ from .profile import LMP201
 from .consoleprintermanager import ConsolePrinterManager
 from .bluetoothprintermanager import BluetoothPrinterManager
 from .zinevalidator import ZineValidator
+from .inputmanager import InputManager
 
 BUTTON_BLUE_PIN = 16
 BUTTON_YELLOW_PIN = 20
@@ -56,7 +57,7 @@ if __name__ == "__main__":
     else:
         printerManager = BluetoothPrinterManager(LMP201())
 
-    zineMachine = ZineMachine(printerManager, enableGPIO=not args.nogpio)
+    zineMachine = ZineMachine(printerManager)
 
     if args.printer == "console":
         zineMachine.secondsPerCharacter = 0
@@ -78,22 +79,74 @@ if __name__ == "__main__":
         print()
 
 
-    # zineMachine.dryRun = args.dry
-    # zineMachine.echoStdOut = args.dry
-
     # print(args)
-    # zineMachine.bindButton('Test', BUTTON_BLUE_PIN)
-    for c in args.c:
-        if len(c) != 2:
-            raise Exception('-c must have 2 inputs: CATEGORY PIN')
 
-        pin = (BUTTON_BLUE_PIN if c[1] == 'blue' else
-               BUTTON_YELLOW_PIN if c[1] == 'yellow' else
-               BUTTON_GREEN_PIN if c[1] == 'green' else
-               BUTTON_PINK_PIN if c[1] == 'pink' else
-               int(c[1]))
+    if args.nogpio is not True:
+        import RPi.GPIO as GPIO
+        GPIO.setmode(GPIO.BCM)
 
-        zineMachine.bindButton(c[0], pin)
+        inputManager = InputManager()
+
+        pins = []
+
+        for c in args.c:
+            if len(c) != 2:
+                raise Exception('-c must have 2 inputs: CATEGORY PIN')
+
+            pin = (BUTTON_BLUE_PIN if c[1] == 'blue' else
+                   BUTTON_YELLOW_PIN if c[1] == 'yellow' else
+                   BUTTON_GREEN_PIN if c[1] == 'green' else
+                   BUTTON_PINK_PIN if c[1] == 'pink' else
+                   int(c[1]))
+
+            # zineMachine.bindButton(c[0], pin)
+            inputManager.addButton(pin, c[1])
+            inputManager.addChord(frozenset([pin]), lambda chord,holdTime,category=c[0]: zineMachine.printRandomZineFromCategory(category))
+
+        inputManager.addChord(frozenset([BUTTON_BLUE_PIN, BUTTON_YELLOW_PIN, BUTTON_GREEN_PIN, BUTTON_PINK_PIN]), lambda chord,holdTime: print("TODO: shutdown"), holdTime=5.0)
+
+
+
+    """
+    inputManager = InputManager()
+    inputManager.addButton(BUTTON_BLUE_PIN, 'blue')
+    inputManager.addButton(BUTTON_YELLOW_PIN, 'yellow')
+    inputManager.addButton(BUTTON_GREEN_PIN, 'green')
+    inputManager.addButton(BUTTON_PINK_PIN, 'pink')
+
+    def printInput(pins, holdTime):
+        names = [inputManager.buttons[pin].name for pin in pins]
+        print(f"{names}, {holdTime}")
+
+    allPins = [BUTTON_BLUE_PIN, BUTTON_YELLOW_PIN, BUTTON_GREEN_PIN, BUTTON_PINK_PIN]
+
+    allPermutations = set()
+
+    # test pressRelease
+    for pin in allPins:
+        allPermutations.add(frozenset([pin]))
+
+        for pin2 in allPins:
+            if pin2 == pin:
+                continue
+            allPermutations.add(frozenset([pin, pin2]))
+
+            for pin3 in allPins:
+                if pin3 == pin or pin3 == pin2:
+                    continue
+                allPermutations.add(frozenset([pin, pin2, pin3]))
+                for pin4 in allPins:
+                    if pin4 == pin or pin4 == pin2 or pin4 == pin3:
+                        continue
+                    allPermutations.add(frozenset([pin, pin2, pin3, pin4]))
+
+    for p in allPermutations:
+        inputManager.addChord(p, printInput)
+        inputManager.addChord(p, printInput, holdTime=1.0)
+        inputManager.addChord(p, printInput, holdTime=2.0)
+    """
+
+    print("Ready.")
 
     # zineMachine.printRandomZineFromCategory('diy')
     # zine = zineMachine.categories['test']['zines/test/formatted.zine']

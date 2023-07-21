@@ -1,4 +1,4 @@
-from threading import Timer
+from threading import Timer, Lock
 import RPi.GPIO as GPIO
 
 
@@ -12,6 +12,7 @@ class Button(object):
 
         self.timer = Timer(debounceTime, self.makeButtonHandler())
         self.pressed = False
+        self.inputLock = Lock()
 
         GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         GPIO.add_event_detect(pin, GPIO.BOTH, callback=self.fallingInterrupt)
@@ -21,10 +22,11 @@ class Button(object):
         Interrupt handler
         """
 
-        if self.timer.is_alive():
-            return
+        with self.inputLock:
+            if self.timer.is_alive():
+                return
 
-        self.timer.start()
+            self.timer.start()
 
     def makeButtonHandler(self):
         def handler():
