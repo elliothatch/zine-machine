@@ -7,7 +7,10 @@ from .profile import LMP201
 from .consoleprintermanager import ConsolePrinterManager
 from .bluetoothprintermanager import BluetoothPrinterManager
 from .zinevalidator import ZineValidator
-from .inputmanager import InputManager
+from .zine import Zine
+
+from pathlib import PurePath
+
 
 BUTTON_BLUE_PIN = 16
 BUTTON_YELLOW_PIN = 20
@@ -19,50 +22,36 @@ YELLOW = '\033[93m'
 BOLD = '\033[1m'
 ENDC = '\033[0m'
 
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        prog='zine-machine',
-        description='Press a button to print a zine on a receipt printer')
-
-    parser.add_argument('-c', action='append', nargs='*', help='CATEGORY PIN - bind button PIN to print random zine in CATEGORY')
-    # parser.add_argument('--dry', default=False, help='dry run - print to stdout instead of the receipt printer')
-    parser.add_argument('--printer')
-    # TODO: add file output that just prints a file and exits. remove keyboardbutton and add flag to enable/disable gpio
-    parser.add_argument('--nogpio', action='store_true')
-
-    parser.add_argument('--validate', nargs='?', const='zines', metavar='PATH',
-                        help='Check a zine file or directory of zines for formatting/printability issues, then exit. If specified with no value, uses $PWD/%(const)s')
-    # if provided with no arguments, validates all zines in the './zines' directory. one argument can be provided to specify a specific zine or directory to validate
-
-    parser.add_argument('--resize', nargs='?', type=int, const=576, metavar='MAXWIDTH_PX',
-                        help='If using --validate, also resize images that are larger than the provided width (default: %(const)s)')
-
-    args = parser.parse_args()
-
-    if args.validate:
-        validator = ZineValidator() if args.resize is None else ZineValidator(resizeImages=True, maxImageWidth=args.resize)
-        diagnostics = validator.validateDirectory(args.validate)
-        if len(diagnostics[0]) > 0:
-            sys.exit(1)
-        elif len(diagnostics[1]) > 0:
-            sys.exit(2)
-
-        sys.exit(0)
-
-    printerManager = None
-
-    if args.printer == "console":
-        printerManager = ConsolePrinterManager()
+def initZineMachine(args):
+    if args.stdio:
+        zineMachine = ZineMachine(ConsolePrinterManager(), secondsPerCharacter=0.0, basePrintTime=0.0)
+        return zineMachine
     else:
-        printerManager = BluetoothPrinterManager(LMP201())
+        zineMachine = ZineMachine(BluetoothPrinterManager(LMP201()))
+        return zineMachine
 
-    zineMachine = ZineMachine(printerManager)
 
-    if args.printer == "console":
-        zineMachine.secondsPerCharacter = 0
+def validateZines(args):
+    validator = ZineValidator() if args.resize is None else ZineValidator(resizeImages=True, maxImageWidth=args.resize)
+    diagnostics = validator.validateDirectory(args.file)
+    if len(diagnostics[0]) > 0:
+        sys.exit(1)
+    elif len(diagnostics[1]) > 0:
+        sys.exit(2)
 
-    zineMachine.initIndex()
+def printZines(args):
+    print(f'Print {args}')
+    zineMachine = initZineMachine(args)
+    pathParts = PurePath(args.file).parts
+    category = pathParts[1] if len(pathParts) >= 2 else pathParts[0] if len(pathParts) >= 1 else None
+    zine = Zine(args.file, category)
+    zineMachine.printZine(zine)
+    sys.exit(0)
+
+def serveZines(args):
+    zineMachine = initZineMachine(args)
+    zineMachine.initIndex(args.zines_dir)
+
     print('{} zines loaded'.format(sum([len(v) for v in zineMachine.categories.values()])))
     for k, v in zineMachine.categories.items():
         print('{}: {}'.format(k, len(v)))
@@ -78,36 +67,81 @@ if __name__ == "__main__":
 
         print()
 
+    import RPi.GPIO as GPIO
+    GPIO.setmode(GPIO.BCM)
 
-    # print(args)
+    from .inputmanager import InputManager
+    inputManager = InputManager()
 
-    if args.nogpio is not True:
-        import RPi.GPIO as GPIO
-        GPIO.setmode(GPIO.BCM)
+    for c in args.category:
+        if len(c) != 2:
+            raise Exception('-c must have 2 inputs: CATEGORY PIN')
 
-        inputManager = InputManager()
+        pin = (BUTTON_BLUE_PIN if c[1] == 'blue' else
+               BUTTON_YELLOW_PIN if c[1] == 'yellow' else
+               BUTTON_GREEN_PIN if c[1] == 'green' else
+               BUTTON_PINK_PIN if c[1] == 'pink' else
+               int(c[1]))
 
-        pins = []
+        inputManager.addButton(pin, c[1])
+        inputManager.addChord(frozenset([pin]), lambda chord,holdTime,category=c[0]: zineMachine.printRandomZineFromCategory(category))
 
-        for c in args.c:
-            if len(c) != 2:
-                raise Exception('-c must have 2 inputs: CATEGORY PIN')
+    inputManager.addChord(frozenset([BUTTON_BLUE_PIN, BUTTON_YELLOW_PIN, BUTTON_GREEN_PIN, BUTTON_PINK_PIN]), lambda chord,holdTime: print("TODO: shutdown"), holdTime=5.0)
 
-            pin = (BUTTON_BLUE_PIN if c[1] == 'blue' else
-                   BUTTON_YELLOW_PIN if c[1] == 'yellow' else
-                   BUTTON_GREEN_PIN if c[1] == 'green' else
-                   BUTTON_PINK_PIN if c[1] == 'pink' else
-                   int(c[1]))
 
-            # zineMachine.bindButton(c[0], pin)
-            inputManager.addButton(pin, c[1])
-            inputManager.addChord(frozenset([pin]), lambda chord,holdTime,category=c[0]: zineMachine.printRandomZineFromCategory(category))
 
-        inputManager.addChord(frozenset([BUTTON_BLUE_PIN, BUTTON_YELLOW_PIN, BUTTON_GREEN_PIN, BUTTON_PINK_PIN]), lambda chord,holdTime: print("TODO: shutdown"), holdTime=5.0)
 
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        prog='zine-machine',
+        description='Press a button to print a zine on a receipt printer')
+
+
+    parser.add_argument('command', help='command to execute')
+    parser.add_argument('-v', '--version', action='store_true', help='Show version and exit')
+
+    subparsers = parser.add_subparsers(title='commands', required=True)
+
+    # validate
+    validateParser = subparsers.add_parser('validate', help='Validate zines for formatting or printability issues')
+    validateParser.add_argument('file', nargs='?', default='zines',
+        help='File or directory to validate (default: $PWD/%(const)s)')
+
+    validateParser.add_argument('--resize', nargs='?', type=int, const=576, metavar='MAXWIDTH_PX',
+        help='Automatically resize images that are larger than the provided width. If --resize is provided with no value, defaults to %(const)s). A backup is saved as {FILE}.orig')
+
+    validateParser.set_defaults(func=validateZines)
+
+    # print
+    printParser = subparsers.add_parser('print', help='Print a single zine and exit')
+
+    printParser.add_argument('file', help='The zine to print')
+    printParser.add_argument('--stdio', action='store_true', help='Print zine to console stdio instead of a receipt printer')
+    printParser.add_argument('--profile', help='File containing a JSON profile for the printer model')
+    printParser.set_defaults(func=printZines)
+
+    # serve
+    serveParser = subparsers.add_parser('serve', help='Listen for GPIO button inputs and print zines according to category')
+    serveParser.add_argument('zines_dir', nargs='?', default='zines',
+        help='Directory containing zine categories (default: $PWD/%(const)s)')
+    serveParser.add_argument('-c', '--category', action='append', nargs='*', help='CATEGORY PIN - bind button PIN to print random zine in CATEGORY')
+    serveParser.add_argument('--stdio', action='store_true', help='Print zine to console stdio instead of a receipt printer')
+    serveParser.add_argument('--profile', help='File containing a JSON profile for the printer model')
+    serveParser.set_defaults(func=serveZines)
+
+
+    if len(sys.argv) < 2:
+        parser.print_help()
+        exit(1)
+
+    args = parser.parse_args(sys.argv)
+
+    args.func(args)
+    exit(0)
 
 
     """
+    from .inputmanager import InputManager
     inputManager = InputManager()
     inputManager.addButton(BUTTON_BLUE_PIN, 'blue')
     inputManager.addButton(BUTTON_YELLOW_PIN, 'yellow')

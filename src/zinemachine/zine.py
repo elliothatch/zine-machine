@@ -30,61 +30,137 @@ class Zine(object):
         'tabsize': 4
     }
 
-    def __init__(self, path, category, metadata):
+    defaultImageOptions = {
+        'fragment_height': 960,
+        'center': True
+    }
+
+    def __init__(self, path, category, maxFileSizeKb=1024):
         if not isinstance(path, str):
             raise TypeError("expected path to have type 'str' but got '{}'".format(type(path)))
         if not isinstance(category, str):
             raise TypeError("expected category to have type 'str' but got '{}'".format(type(category)))
-        if not isinstance(metadata, dict):
-            raise TypeError("expected metadata to have type 'dict' but got '{}'".format(type(metadata)))
-
-        self.maxFileSizeKb = 1024
-        self.imageOptions = {
-            'fragment_height': 960,
-            'center': True
-        }
 
         self.path = path
         self.category = category
-        self.metadata = metadata
-        self.textwrapOptions = Zine.defaultTextwrapOptions
+        self.maxFileSizeKb = maxFileSizeKb
 
+        self.metadata = None
         self.markup = None
+        self.text = None
 
     @staticmethod
-    def extractMetadata(path):
-        metadata = {}
-        with open(path, encoding="utf-8") as f:
-            inHeader = False
-            for line in f:
-                if line.strip() == "":
-                    continue
+    def printMarkup(markup, printer, path='', baseStyles=dict(), imageOptions=defaultImageOptions):
+        try:
+            if isinstance(markup, MarkupGroup):
+                for child in markup.children:
+                    Zine.printMarkup(child, printer, baseStyles=baseStyles)
+            if isinstance(markup, MarkupText):
+                styles = baseStyles | markup.styles
+                # if styles != baseStyles:
+                    # printer.set(**styles)
+                printer.set(**styles)
+                # TODO: remember the previous style and don't set unless necessary
+                for subtext in markup.text:
+                    Zine.printMarkup(subtext, printer, baseStyles=styles)
+            elif isinstance(markup, MarkupImage):
+                printer.image(os.path.join(os.path.dirname(path), markup.src), **imageOptions)
+                Zine.printMarkup(markup.caption, printer, baseStyles=baseStyles)
+            elif isinstance(markup, StrToken):
+                printer.text(markup.text)
+        except Exception as error:
+            print(f"Zine.printMarkup error ({markup.pos}, {path}) {str(error)}")
+            printer.text(str(error) + "\n")
 
-                if not inHeader:
-                    if line.strip() == '-----':
-                        inHeader = True
-                        continue
-                    else:
-                        break
+    @staticmethod
+    def printHeader(metadata, category, printer, width=48, styles=defaultStyles, border={
+            'top-left':          "╔═╦",    'top': "═",             'top-right': "╦═╗",
+            'top-left-inner':    "╠═╝ ",                    'top-right-inner': " ╚═╣",
+            'left':              "║ ",                                  'right': " ║",
+            'bottom-left-inner': "╠═╗ ",                 'bottom-right-inner': " ╔═╣",
+            'bottom-left':       "╚═╩", 'bottom': "═",          'bottom-right': "╩═╝"
+    }):
 
-                splitIndex = line.find(':')
-                if line.strip() == '-----' or splitIndex == -1:
-                    break
+        topWidth = width - (len(border['top-left']) + len(border['top-right']))
+        topInnerWidth = width - (len(border['top-left-inner']) + len(border['top-right-inner']))
+        innerWidth = width - (len(border['left']) + len(border['right']))
+        bottomInnerWidth = width - (len(border['bottom-left-inner']) + len(border['bottom-right-inner']))
+        bottomWidth = width - (len(border['bottom-left']) + len(border['bottom-right']))
 
-                key = "".join(line[:splitIndex].lower().split())
-                value = line[splitIndex + 1:].strip()
+        title = [line.center(topInnerWidth if i == 0 else innerWidth) for i, line in enumerate(textwrap.wrap(metadata.get('title', ''), width=topInnerWidth))]
 
-                if key in metadata:
-                    print("{}Warning (Zine.extractMetadata): '{}' contains duplicate metadata field '{}'. overwriting '{}' with '{}' {}".format(YELLOW, path, key, metadata[key], value, ENDC), file=sys.stderr)
+        # description = textWrapper.wrap(zine.metadata.get('"description') or '')
+        datepublished = date.fromisoformat(metadata['datepublished']) if 'datepublished' in metadata else None
+        author = metadata.get('author', None)
 
-                metadata[key] = value
+        byline = [line.center(innerWidth) for line in textwrap.wrap(", ".join(([author] if author else [])
+                                                                    + ([str(datepublished.year)] if datepublished else [])), width=innerWidth)]
+        # todo: wrap category
+        categoryText = (category if category is not None else '').center(bottomInnerWidth)
 
-        if 'title' not in metadata:
-            filename = os.path.splitext(os.path.basename(path))[0]
-            print(f"{YELLOW}Warning (Zine.extractMetadata): '{path}' does not define the required metadata field 'title'. Using '{filename}'{ENDC}", file=sys.stderr)
-            metadata['title'] = filename
+        printer.set(**styles)
+        # print empty line to ensure we are at the beginning of a newline
+        printer.text('\n')
+        printer.text(border['top-left'])
+        printer.text(border['top'] * topWidth)
+        printer.text(border['top-right'])
+        printer.text('\n')
 
-        return metadata
+        for i, line in enumerate(title):
+            if i == 0:
+                printer.text(border['top-left-inner'])
+                printer.text(line)
+                printer.text(border['top-right-inner'])
+                printer.text('\n')
+            else:
+                printer.text(border['left'])
+                printer.text(line)
+                printer.text(border['right'])
+                printer.text('\n')
+
+        for line in byline:
+            printer.text(border['left'])
+            printer.text(line)
+            printer.text(border['right'])
+            printer.text('\n')
+
+        printer.text(border['bottom-left-inner'])
+        printer.text(categoryText)
+        printer.text(border['bottom-right-inner'])
+        printer.text('\n')
+        printer.text(border['bottom-left'])
+        printer.text(border['bottom'] * bottomWidth)
+        printer.text(border['bottom-right'])
+        printer.text('\n')
+
+    @staticmethod
+    def printFooter(printer, width=48, styles=defaultStyles):
+        printer.set(**styles)
+        printer.text("═" * width)
+        printer.text("\n")
+
+        doublePadding = ((width//2) - 3) // 2
+        printer.set(double_width=True, double_height=True)
+        printer.text(" " * doublePadding)
+        printer.text("╔╤")
+        printer.set(underline=2, double_width=True, double_height=True)
+        printer.text("▓▓")
+        printer.set(double_width=True, double_height=True)
+        printer.text("╤╗")
+        printer.text("\n")
+
+        printer.text(" " * doublePadding)
+        printer.text("╠╧══╧╣")
+        printer.text("\n")
+
+        printer.text(" " * doublePadding)
+        printer.text("╚════╝")
+        printer.text("\n")
+
+        printer.set(**styles)
+        printer.text(" - Zine Machine\n")
+
+        printer.text("\n\n\n")
 
     @staticmethod
     def wrapMarkup(markup, wrappedText: List[str], wrappedTextPos=None):
@@ -164,19 +240,61 @@ class Zine(object):
         strToken.text = output
         return strToken
 
-    def initMarkup(self):
+
+    def loadMetadata(self, reload=False):
+        if reload:
+            self.metadata = None
+
+        if self.metadata is not None:
+            return self.metadata
+
+        self.metadata = {}
+
+        with open(self.path, encoding="utf-8") as f:
+            inHeader = False
+            for line in f:
+                if line.strip() == "":
+                    continue
+
+                if not inHeader:
+                    if line.strip() == '-----':
+                        inHeader = True
+                        continue
+                    else:
+                        break
+
+                splitIndex = line.find(':')
+                if line.strip() == '-----' or splitIndex == -1:
+                    break
+
+                key = "".join(line[:splitIndex].lower().split())
+                value = line[splitIndex + 1:].strip()
+
+                if key in self.metadata:
+                    print("{}Warning (Zine.extractMetadata): '{}' contains duplicate metadata field '{}'. overwriting '{}' with '{}' {}".format(YELLOW, self.path, key, self.metadata[key], value, ENDC), file=sys.stderr)
+
+                self.metadata[key] = value
+
+        if 'title' not in self.metadata:
+            filename = os.path.splitext(os.path.basename(self.path))[0]
+            print(f"{YELLOW}Warning (Zine.extractMetadata): '{self.path}' does not define the required metadata field 'title'. Using '{filename}'{ENDC}", file=sys.stderr)
+            self.metadata['title'] = filename
+
+        return self.metadata
+
+    def initMarkup(self, textwrapOptions=defaultTextwrapOptions):
         """
         Load markup from disk and wrap text.
         """
         print("Loading zine '{}'...".format(self.path))
         [markup, text] = self.loadMarkup()
-        if self.textwrapOptions is not None:
+        if textwrapOptions is not None:
             print("Text wrapping...")
             # break up the file into a list of seperate lines and feed each line into the textwrapper individually
             lines = "".join(text).splitlines()
             wrapped = []
             for line in lines:
-                sublines = textwrap.wrap(line, **self.textwrapOptions)
+                sublines = textwrap.wrap(line, **textwrapOptions)
                 if len(sublines) == 0:
                     # if textwrap returned an empty array, it was given an empty line that we want to preserve in the output
                     wrapped.append('')
@@ -185,15 +303,6 @@ class Zine(object):
                     wrapped.append(s)
 
             Zine.wrapMarkup(markup, wrapped)
-
-    def printZine(self, printer):
-        if self.markup == None:
-            self.initMarkup()
-
-        print("Printing...")
-        printer.set(**Zine.defaultStyles)
-        self.printMarkup(self.markup, printer, baseStyles=Zine.defaultStyles)
-        printer.text('\n')
 
     def loadMarkup(self):
         """Read the zine from disk (skipping header) and parse it as markup, along with a plaintext version that has been textwrapped using self.textwrapOptions
@@ -247,105 +356,22 @@ class Zine(object):
         self.text = parser.text
         return [self.markup, parser.text]
 
-    def printMarkup(self, markup, printer, baseStyles=dict()):
-        try:
-            if isinstance(markup, MarkupGroup):
-                for child in markup.children:
-                    self.printMarkup(child, printer, baseStyles=baseStyles)
-            if isinstance(markup, MarkupText):
-                styles = baseStyles | markup.styles
-                # if styles != baseStyles:
-                    # printer.set(**styles)
-                printer.set(**styles)
-                # TODO: remember the previous style and don't set unless necessary
-                for subtext in markup.text:
-                    self.printMarkup(subtext, printer, baseStyles=styles)
-            elif isinstance(markup, MarkupImage):
-                printer.image(os.path.join(os.path.dirname(self.path), markup.src), **self.imageOptions)
-                self.printMarkup(markup.caption, printer, baseStyles=baseStyles)
-            elif isinstance(markup, StrToken):
-                printer.text(markup.text)
-        except Exception as error:
-            print(f"Zine.printMarkup error ({markup.pos}, {self.path}) {str(error)}")
-            printer.text(str(error) + "\n")
+    def printZine(self, printer, baseStyles=defaultStyles, textwrapOptions=defaultTextwrapOptions, imageOptions=defaultImageOptions,
+        printHeaderFunc=printHeader, printFooterFunc=printFooter):
 
-    def printHeader(self, printer, width=48, border={
-            'top':         "╔═╦══════════════════════════════════════════╦═╗",
-            'top-left':    "╠═╝ ",                        'top-right': " ╚═╣",
-            'left':        "║ ",                                'right': " ║",
-            'bottom-left': "╠═╗ ",                     'bottom-right': " ╔═╣",
-            'bottom':      "╚═╩══════════════════════════════════════════╩═╝"
-    }):
-        topWidth = width - (len(border['top-left']) + len(border['top-right']))
-        innerWidth = width - (len(border['left']) + len(border['right']))
-        bottomWidth = width - (len(border['bottom-left']) + len(border['bottom-right']))
+        if self.metadata is None:
+            self.loadMetadata()
 
-        title = [line.center(topWidth if i == 0 else innerWidth) for i, line in enumerate(textwrap.wrap(self.metadata.get('title') or '', width=topWidth))]
+        if self.markup is None:
+            self.initMarkup(textwrapOptions=textwrapOptions)
 
-        # description = textWrapper.wrap(zine.metadata.get('"description') or '')
-        datepublished = date.fromisoformat(self.metadata['datepublished']) if 'datepublished' in self.metadata else None
-        author = self.metadata.get('author')
-
-        byline = [line.center(innerWidth) for line in textwrap.wrap(", ".join(([author] if author else [])
-                                                                    + ([str(datepublished.year)] if datepublished else [])), width=innerWidth)]
-        # todo: wrap category
-        category = self.category.center(bottomWidth)
-
-        printer.set(**Zine.defaultStyles)
-        # print empty line to ensure we are at the beginning of a newline
+        printer.set(**baseStyles)
+        printHeaderFunc(self.metadata, self.category, printer)
+        Zine.printMarkup(self.markup, printer, path=self.path, baseStyles=baseStyles, imageOptions=imageOptions)
         printer.text('\n')
-        printer.text(border['top'])
-        printer.text('\n')
+        printFooterFunc(printer)
 
-        for i, line in enumerate(title):
-            if i == 0:
-                printer.text(border['top-left'])
-                printer.text(line)
-                printer.text(border['top-right'])
-                printer.text('\n')
-            else:
-                printer.text(border['left'])
-                printer.text(line)
-                printer.text(border['right'])
-                printer.text('\n')
+    def clearCache(self):
+        self.text = None
+        self.markup = None
 
-        for line in byline:
-            printer.text(border['left'])
-            printer.text(line)
-            printer.text(border['right'])
-            printer.text('\n')
-
-        printer.text(border['bottom-left'])
-        printer.text(category)
-        printer.text(border['bottom-right'])
-        printer.text('\n')
-        printer.text(border['bottom'])
-        printer.text('\n')
-
-    def printFooter(self, printer, width=48):
-        printer.set(**Zine.defaultStyles)
-        printer.text("═" * width)
-        printer.text("\n")
-
-        doublePadding = ((width//2) - 3) // 2
-        printer.set(double_width=True, double_height=True)
-        printer.text(" " * doublePadding)
-        printer.text("╔╤")
-        printer.set(underline=2, double_width=True, double_height=True)
-        printer.text("▓▓")
-        printer.set(double_width=True, double_height=True)
-        printer.text("╤╗")
-        printer.text("\n")
-
-        printer.text(" " * doublePadding)
-        printer.text("╠╧══╧╣")
-        printer.text("\n")
-
-        printer.text(" " * doublePadding)
-        printer.text("╚════╝")
-        printer.text("\n")
-
-        printer.set(**Zine.defaultStyles)
-        printer.text(" - Zine Machine\n")
-
-        printer.text("\n\n\n")

@@ -93,6 +93,7 @@ class InputManager(object):
                     if 0.0 in chordCommands:
                         # pressRelease
                         self.resetInput()
+                        # release lock before executing the command
                         self.inputLock.release()
                         chordCommands[0.0](frozenChord, 0.0)
                         return

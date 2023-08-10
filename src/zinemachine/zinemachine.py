@@ -9,6 +9,7 @@ from datetime import date
 import textwrap
 from escpos.printer import Serial
 from serial.serialutil import SerialException
+from threading import Lock
 
 from .zine import Zine
 from .markup import Parser
@@ -29,15 +30,48 @@ class ZineMachine(object):
         self.secondsPerCharacter = secondsPerCharacter
         self.basePrintTime = basePrintTime
         self.printing = False
+        self.printLock = Lock()
+        """printLock is only used to lock the the printing flag. we don't want to queue up multiple prints"""
 
         self.randomZines = dict()
 
-    def printRandomZineFromCategory(self, category):
-        if self.printing is True:
-            print(f"{YELLOW}Printing already in progress. Ignoring request to print '{category}'{ENDC}")
-            return
+    def printZine(self, zine, ignoreLock=False):
+        """ignoreLock - when true, we assert that we have already acquired the print priority and we should skip the locking check (i.e. started the print in printRandomZineFromCategory)"""
 
-        self.printing = True
+        if ignoreLock is False:
+            with self.printLock:
+                if self.printing is True:
+                    print(f"{YELLOW}Printing already in progress. Ignoring request to print '{zine.path}'{ENDC}")
+                    return
+
+                self.printing = True
+
+        # estimate print time, to prevent printing another zine before this one is finished 
+        # printZine automatically initializes markup when needed, but we manually load it here so we can get the length of the text for the time estimate
+        zine.initMarkup()
+        printTime = self.secondsPerCharacter * len(zine.text) + self.basePrintTime
+        print(f"{len(zine.text)} characters long. Estimated print time: {printTime} seconds.")
+
+        print("Printing...")
+        zine.printZine(self.printerManager.printer)
+        self.printerManager.printer.device.flush()
+
+        time.sleep(printTime)
+
+        with self.printLock:
+            self.printing = False
+
+        zine.clearCache()
+        print("Done printing.")
+
+    def printRandomZineFromCategory(self, category):
+        with self.printLock:
+            if self.printing is True:
+                print(f"{YELLOW}Printing already in progress. Ignoring request to print '{category}'{ENDC}")
+                return
+
+            self.printing = True
+
         if category not in self.randomZines:
             # initialize random list
             c = self.categories.get(category)
@@ -51,30 +85,13 @@ class ZineMachine(object):
         index = self.randomZines[category]['index']
         zineCount = len(self.randomZines[category]['zines'])
         zine = self.randomZines[category]['zines'][index]
-        print("Printing random zine ({}/{}) from category '{}'".format(index+1, zineCount, category))
+        print(f"Printing random zine ({index+1}/{zineCount}) from category '{category}': {zine.metadata['title']}")
 
         self.randomZines[category]['index'] = (index + 1) % zineCount
 
-        # estimate print time, to prevent printing another zine before this one is finished 
-        # printZine automatically initializes markup when needed, but we manually load it here so we can get the length of the text for the time estimate
-        zine.initMarkup()
-        printTime = self.secondsPerCharacter * len(zine.text) + self.basePrintTime
-        print(f"{len(zine.text)} characters long. Estimated print time: {printTime} seconds.")
+        self.printZine(zine, ignoreLock=True)
 
-        zine.printHeader(self.printerManager.printer)
-        self.printerManager.printer.device.flush()
-        zine.printZine(self.printerManager.printer)
-        self.printerManager.printer.device.flush()
-        zine.printFooter(self.printerManager.printer)
-        self.printerManager.printer.device.flush()
-
-        print("Print buffer flushed. Sleeping...")
-        time.sleep(printTime)
-        self.printing = False
-        print("Done printing.")
-
-
-    def initIndex(self, path='zines'):
+    def initIndex(self, path):
         for root, dirs, files in os.walk(path):
             # ignore hidden directories
             dirs[:] = [d for d in dirs if not d[0] == '.']
@@ -94,7 +111,9 @@ class ZineMachine(object):
                         continue
 
                     p = os.path.join(root, f)
-                    self.categories[baseCategory][p] = Zine(p, fullCategory, Zine.extractMetadata(p))
+                    zine = Zine(p, fullCategory)
+                    zine.loadMetadata()
+                    self.categories[baseCategory][p] = zine
 
     def initPrinter(self):
         connected = self.printerManager.connect()
