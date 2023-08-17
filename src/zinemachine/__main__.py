@@ -40,13 +40,11 @@ def validateZines(args):
         sys.exit(2)
 
 def printZines(args):
-    print(f'Print {args}')
     zineMachine = initZineMachine(args)
     pathParts = PurePath(args.file).parts
     category = pathParts[1] if len(pathParts) >= 2 else pathParts[0] if len(pathParts) >= 1 else None
     zine = Zine(args.file, category)
     zineMachine.printZine(zine)
-    sys.exit(0)
 
 def serveZines(args):
     zineMachine = initZineMachine(args)
@@ -86,9 +84,35 @@ def serveZines(args):
         inputManager.addButton(pin, c[1])
         inputManager.addChord(frozenset([pin]), lambda chord,holdTime,category=c[0]: zineMachine.printRandomZineFromCategory(category))
 
-    inputManager.addChord(frozenset([BUTTON_BLUE_PIN, BUTTON_YELLOW_PIN, BUTTON_GREEN_PIN, BUTTON_PINK_PIN]), lambda chord,holdTime: print("TODO: shutdown"), holdTime=5.0)
+    def restart(chord, holdTime):
+        try:
+            zineMachine.printText("Resetting. Please wait...\n\n\n")
+        except Exception as e:
+            print(e)
+        print("Exiting...")
+        os._exit(0)
+
+    def shutdown(chord, holdTime):
+        try:
+            zineMachine.printText("Shutting down...\n\n\n")
+        except Exception as e:
+            print(e)
+        print("Shutting down...")
+        result = os.system("sudo shutdown now")
+        if result != 0:
+            try:
+                zineMachine.printText("Shutdown failed.\n\n\n")
+            except Exception as e:
+                print(e)
+            print("Shutdown failed.")
 
 
+    inputManager.addChord(frozenset([BUTTON_YELLOW_PIN, BUTTON_GREEN_PIN, BUTTON_PINK_PIN]), restart, holdTime=5.0)
+    inputManager.addChord(frozenset([BUTTON_BLUE_PIN, BUTTON_YELLOW_PIN, BUTTON_GREEN_PIN, BUTTON_PINK_PIN]), shutdown, holdTime=5.0)
+
+
+    zineMachine.printText("Ready to print!\n\n\n\n\n")
+    signal.pause()
 
 
 if __name__ == "__main__":
@@ -117,7 +141,7 @@ if __name__ == "__main__":
 
     printParser.add_argument('file', help='The zine to print')
     printParser.add_argument('--stdio', action='store_true', help='Print zine to console stdio instead of a receipt printer')
-    printParser.add_argument('--profile', help='File containing a JSON profile for the printer model')
+    # printParser.add_argument('--profile', help='File containing a JSON profile for the printer model')
     printParser.set_defaults(func=printZines)
 
     # serve
@@ -126,7 +150,7 @@ if __name__ == "__main__":
         help='Directory containing zine categories (default: $PWD/%(const)s)')
     serveParser.add_argument('-c', '--category', action='append', nargs='*', help='CATEGORY PIN - bind button PIN to print random zine in CATEGORY')
     serveParser.add_argument('--stdio', action='store_true', help='Print zine to console stdio instead of a receipt printer')
-    serveParser.add_argument('--profile', help='File containing a JSON profile for the printer model')
+    # serveParser.add_argument('--profile', help='File containing a JSON profile for the printer model')
     serveParser.set_defaults(func=serveZines)
 
 

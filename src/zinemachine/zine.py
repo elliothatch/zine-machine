@@ -34,6 +34,10 @@ class Zine(object):
         'fragment_height': 960,
         'center': True
     }
+    defaultQrCodeOptions = {
+        'size': 5,
+        'center': True
+    }
 
     def __init__(self, path, category, maxFileSizeKb=1024):
         if not isinstance(path, str):
@@ -49,12 +53,89 @@ class Zine(object):
         self.markup = None
         self.text = None
 
+    def loadMarkup(self):
+        """Read the zine from disk (skipping header) and parse it as markup, along with a plaintext version that has been textwrapped using self.textwrapOptions
+        """
+        parser = Parser()
+        text = ''
+        with open(self.path, encoding="utf-8") as f:
+            # skip the header and find the text
+            foundHeader = False
+            foundText = False
+            for line in f:
+                if foundText is False:
+                    # search for header
+                    if line.strip() == "":
+                        continue
+
+                    if foundHeader is False:
+                        if line.strip() == '-----':
+                            foundHeader = True
+                            continue
+                        else:
+                            # there is no header, consider the entire file text
+                            foundText = True
+                    else:
+                        # we are in the header
+                        if line.strip() == '-----':
+                            # found the end of the header
+                            foundText = True
+                            continue
+                        else:
+                            splitIndex = line.find(':')
+                            if splitIndex > -1:
+                                # skip metadata
+                                continue
+                            else:
+                                # the header ended abruptly
+                                foundText = True
+
+                # found the beginning of the text
+                text = line + f.read(self.maxFileSizeKb * 1000)
+
+                if f.read(1) != '':
+                    print(f"Warning: exceeded max file size. only processing the first {self.maxFileSizeKb}Kb/{math.floor(os.fstat(f.fileno()).st_size/1000)}Kb of zine '{self.path}'",
+                          file=sys.stderr)
+                break
+
+        parser.feed(text)
+        if len(parser.errors) > 0:
+            raise Exception(f"Zine: Markup parser errors in '{self.path}'", parser.errors)
+        self.markup = MarkupGroup(parser.stack)
+        self.text = parser.text
+        return [self.markup, parser.text]
+
+    def printZine(self, printer, baseStyles=defaultStyles, textwrapOptions=defaultTextwrapOptions, imageOptions=defaultImageOptions, qrCodeOptions=defaultQrCodeOptions,
+        printHeaderFunc=None, printFooterFunc=None):
+
+        if self.metadata is None:
+            self.loadMetadata()
+
+        if self.markup is None:
+            self.initMarkup(textwrapOptions=textwrapOptions)
+
+        if printHeaderFunc is None:
+            printHeaderFunc = Zine.printHeader
+
+        if printFooterFunc is None:
+            printFooterFunc = Zine.printFooter
+
+        printer.set(**baseStyles)
+        printHeaderFunc(self.metadata, self.category, printer)
+        Zine.printMarkup(self.markup, printer, path=self.path, baseStyles=baseStyles, imageOptions=imageOptions)
+        printer.text('\n')
+        printFooterFunc(printer, self.metadata, qrCodeOptions=qrCodeOptions)
+
+    def clearCache(self):
+        self.text = None
+        self.markup = None
+
     @staticmethod
     def printMarkup(markup, printer, path='', baseStyles=dict(), imageOptions=defaultImageOptions):
         try:
             if isinstance(markup, MarkupGroup):
                 for child in markup.children:
-                    Zine.printMarkup(child, printer, baseStyles=baseStyles)
+                    Zine.printMarkup(child, printer, path=path, baseStyles=baseStyles)
             if isinstance(markup, MarkupText):
                 styles = baseStyles | markup.styles
                 # if styles != baseStyles:
@@ -62,10 +143,10 @@ class Zine(object):
                 printer.set(**styles)
                 # TODO: remember the previous style and don't set unless necessary
                 for subtext in markup.text:
-                    Zine.printMarkup(subtext, printer, baseStyles=styles)
+                    Zine.printMarkup(subtext, printer, path=path, baseStyles=styles)
             elif isinstance(markup, MarkupImage):
                 printer.image(os.path.join(os.path.dirname(path), markup.src), **imageOptions)
-                Zine.printMarkup(markup.caption, printer, baseStyles=baseStyles)
+                Zine.printMarkup(markup.caption, printer, path=path, baseStyles=baseStyles)
             elif isinstance(markup, StrToken):
                 printer.text(markup.text)
         except Exception as error:
@@ -98,6 +179,8 @@ class Zine(object):
         # todo: wrap category
         categoryText = (category if category is not None else '').center(bottomInnerWidth)
 
+        publisher = [line.center(innerWidth) for line in textwrap.wrap(metadata['publisher'] if 'publisher' in metadata else '', width=innerWidth)]
+
         printer.set(**styles)
         # print empty line to ensure we are at the beginning of a newline
         printer.text('\n')
@@ -124,6 +207,12 @@ class Zine(object):
             printer.text(border['right'])
             printer.text('\n')
 
+        for line in publisher:
+            printer.text(border['left'])
+            printer.text(line)
+            printer.text(border['right'])
+            printer.text('\n')
+
         printer.text(border['bottom-left-inner'])
         printer.text(categoryText)
         printer.text(border['bottom-right-inner'])
@@ -134,10 +223,15 @@ class Zine(object):
         printer.text('\n')
 
     @staticmethod
-    def printFooter(printer, width=48, styles=defaultStyles):
+    def printFooter(printer, metadata, width=48, styles=defaultStyles, qrCodeOptions=defaultQrCodeOptions):
         printer.set(**styles)
         printer.text("═" * width)
         printer.text("\n")
+
+        # extra metadata
+        if 'url' in metadata:
+            printer.qr(metadata['url'], **qrCodeOptions)
+            printer.text(metadata['url'] + "\n")
 
         doublePadding = ((width//2) - 3) // 2
         printer.set(double_width=True, double_height=True)
@@ -163,25 +257,26 @@ class Zine(object):
         printer.text("\n\n\n")
 
     @staticmethod
-    def wrapMarkup(markup, wrappedText: List[str], wrappedTextPos=None):
+    def wrapMarkup(markup, wrappedText: List[str], wrappedTextPos=None, textwrapOptions=defaultTextwrapOptions, styles=defaultStyles):
         if wrappedTextPos is None:
             wrappedTextPos = [0, 0]
 
         if isinstance(markup, MarkupGroup):
             for child in markup.children:
-                Zine.wrapMarkup(child, wrappedText, wrappedTextPos)
+                Zine.wrapMarkup(child, wrappedText, wrappedTextPos, styles=styles)
         if isinstance(markup, MarkupText):
+            newStyles = styles | markup.styles
             for subtext in markup.text:
-                Zine.wrapMarkup(subtext, wrappedText, wrappedTextPos)
+                Zine.wrapMarkup(subtext, wrappedText, wrappedTextPos, styles=newStyles)
         elif isinstance(markup, MarkupImage):
-            Zine.wrapMarkup(markup.caption, wrappedText, wrappedTextPos)
+            Zine.wrapMarkup(markup.caption, wrappedText, wrappedTextPos, styles=styles)
         elif isinstance(markup, StrToken):
-            Zine.wrapStrToken(markup, wrappedText, wrappedTextPos)
+            Zine.wrapStrToken(markup, wrappedText, wrappedTextPos, textwrapOptions=textwrapOptions, styles=styles)
 
         return markup
 
     @staticmethod
-    def wrapStrToken(strToken, wrappedText, wrappedTextPos):
+    def wrapStrToken(strToken, wrappedText, wrappedTextPos, textwrapOptions=defaultTextwrapOptions, styles=defaultStyles):
         """ Inserts newlines into the StrToken where each wrappedText element ends
             Also strips whitespace at the end or beginning of a line
             NOTE: leading/trailing newlines are stripped as well. These newlines will be automatically re-inserted into the markup because they are included in wrappedText as empty list elements (before wrapMarkup was called)
@@ -236,6 +331,25 @@ class Zine(object):
             lastIndex = end
 
         output += strToken.text[lastIndex:]
+
+        # now that the line breaks are inserted, center/right align each line if necessary
+        """ #THIS DOESN'T WORK because we assume output begins after a linebreak and ends with a linebreak. when this isn't the case (inline styling) the padding is calculated incorrectly
+        if 'align' in styles:
+            width = textwrapOptions['width']
+            if 'double_width' in styles and styles['double_width'] is True:
+                width = width//2
+            lines = output.splitlines()
+            aligned = []
+            for line in lines:
+                if styles['align'] == 'center':
+                    aligned.append(line.center(width))
+                elif styles['align'] == 'right':
+                    aligned.append(line.rjust(width))
+                else:
+                    aligned.append(line)
+
+            #output = "\n".join(aligned)
+        """
 
         strToken.text = output
         return strToken
@@ -302,76 +416,5 @@ class Zine(object):
                 for s in sublines:
                     wrapped.append(s)
 
-            Zine.wrapMarkup(markup, wrapped)
-
-    def loadMarkup(self):
-        """Read the zine from disk (skipping header) and parse it as markup, along with a plaintext version that has been textwrapped using self.textwrapOptions
-        """
-        parser = Parser()
-        text = ''
-        with open(self.path, encoding="utf-8") as f:
-            # skip the header and find the text
-            foundHeader = False
-            foundText = False
-            for line in f:
-                if foundText is False:
-                    # search for header
-                    if line.strip() == "":
-                        continue
-
-                    if foundHeader is False:
-                        if line.strip() == '-----':
-                            foundHeader = True
-                            continue
-                        else:
-                            # there is no header, consider the entire file text
-                            foundText = True
-                    else:
-                        # we are in the header
-                        if line.strip() == '-----':
-                            # found the end of the header
-                            foundText = True
-                            continue
-                        else:
-                            splitIndex = line.find(':')
-                            if splitIndex > -1:
-                                # skip metadata
-                                continue
-                            else:
-                                # the header ended abruptly
-                                foundText = True
-
-                # found the beginning of the text
-                text = line + f.read(self.maxFileSizeKb * 1000)
-
-                if f.read(1) != '':
-                    print(f"Warning: exceeded max file size. only processing the first {self.maxFileSizeKb}Kb/{math.floor(os.fstat(f.fileno()).st_size/1000)}Kb of zine '{self.path}'",
-                          file=sys.stderr)
-                break
-
-        parser.feed(text)
-        if len(parser.errors) > 0:
-            raise Exception(f"Zine: Markup parser errors in '{self.path}'", parser.errors)
-        self.markup = MarkupGroup(parser.stack)
-        self.text = parser.text
-        return [self.markup, parser.text]
-
-    def printZine(self, printer, baseStyles=defaultStyles, textwrapOptions=defaultTextwrapOptions, imageOptions=defaultImageOptions,
-        printHeaderFunc=printHeader, printFooterFunc=printFooter):
-
-        if self.metadata is None:
-            self.loadMetadata()
-
-        if self.markup is None:
-            self.initMarkup(textwrapOptions=textwrapOptions)
-
-        printer.set(**baseStyles)
-        printHeaderFunc(self.metadata, self.category, printer)
-        Zine.printMarkup(self.markup, printer, path=self.path, baseStyles=baseStyles, imageOptions=imageOptions)
-        printer.text('\n')
-        printFooterFunc(printer)
-
-    def clearCache(self):
-        self.text = None
-        self.markup = None
+            Zine.wrapMarkup(markup, wrapped, textwrapOptions=textwrapOptions)
 

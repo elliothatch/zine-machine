@@ -61,7 +61,7 @@ The default validation settings for printable characters and max image width are
 
 # Setup
 
-## Rlash Raspberry Pi OS
+## Flash Raspberry Pi OS
 
 Use the Raspberry Pi imager to flash Raspberry Pi OS to the SD card.
 After you select the OS image, click the gear in the bottom right to set some advanced options that will make it easier to work with the Pi.
@@ -124,6 +124,27 @@ pip install --user python-escpos==3.0a8
 ```
 
 The project also makes use of [RPi.GPIO](https://pypi.org/project/RPi.GPIO/), which should already be installed if you are running the zine machine on a Raspberry Pi.
+
+## Start on boot
+1. Copy the zine machine service file onto the system
+```
+sudo cp etc/systemd/system/zine-machine.service /etc/systemd/system/zine-machine.service
+```
+
+2. Enable to start on boot. `--now` starts it immediately
+```
+sudo systemctl enable --now zine-machine.service
+```
+
+You can check the status of the zine machine service with
+```
+sudo systemctl status zine-machine
+```
+
+and view operational logs with 
+```
+sudo journalctl -u zine-machine
+```
 
 # Module Usage
 The Zine Machine can also be used as a python module, with `import zinemachine`.

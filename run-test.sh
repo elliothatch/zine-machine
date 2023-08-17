@@ -1,2 +1,2 @@
 #!/bin/bash
-python -m zinemachine -c test-pink pink -c test-yellow yellow -c test-green green -c test-blue blue
+python -m zinemachine serve test-zines -c test-pink pink -c test-yellow yellow -c test-green green -c test-blue blue

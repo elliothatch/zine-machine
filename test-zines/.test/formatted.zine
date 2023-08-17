@@ -3,6 +3,8 @@ Title: Formatted Test
 Author: Elliot
 Description: Test with rich markup
 Date Published: 2023-06-01
+Publisher: Elliot Zone
+URL: https://elliot.zone
 -----
 <h1>My test</h1>
 This is a test.
@@ -10,8 +12,6 @@ This is a test.
 <u>This line is underlined in a different way.</u>
 <b>This line is bold.</b>
 <invert>This line is inverted.</invert>
-<flip>This line is flipped.</flip>
-
 <img src="test.png">Captioned image</img>
 
 Here is a line with <u>underlined text that is long enough to wrap</u> but then the underline stops partway through the line. Wow!

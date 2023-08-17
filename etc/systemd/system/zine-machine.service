@@ -1,0 +1,14 @@
+[Unit]
+Description=Zine Machine (GPIO input, bluetooth receipt printer)
+
+[Service]
+Type=simple
+WorkingDirectory=/home/pi/zine-machine
+User=pi
+Group=pi
+ExecStart=python -u -m zinemachine serve -c theory pink -c ecology yellow -c diy green -c queer-stuff blue
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

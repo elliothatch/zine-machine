@@ -237,7 +237,7 @@ class Parser(HTMLParser):
                     {'underline': 1} if tag == 'u' else \
                     {'underline': 2} if tag == 'u2' else \
                     {'bold': True} if tag == 'b' else \
-                    {'double_width': True, 'double_height': True} if tag == 'h1' else \
+                    {'double_width': True, 'double_height': True, 'align': 'center'} if tag == 'h1' else \
                     {'invert': True} if tag == 'invert' else \
                     {'flip': True} if tag == 'flip' else \
                     {}

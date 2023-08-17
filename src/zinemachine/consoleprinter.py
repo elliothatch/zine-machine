@@ -34,3 +34,6 @@ class ConsolePrinter(object):
     def image(self, src, **options):
         print(f"\nImage: {src}, {options}")
 
+    def qr(self, content, **options):
+        print(f"\nQR code: {content}, {options}")
+

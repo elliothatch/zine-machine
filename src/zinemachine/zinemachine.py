@@ -35,34 +35,50 @@ class ZineMachine(object):
 
         self.randomZines = dict()
 
-    def printZine(self, zine, ignoreLock=False):
-        """ignoreLock - when true, we assert that we have already acquired the print priority and we should skip the locking check (i.e. started the print in printRandomZineFromCategory)"""
-
-        if ignoreLock is False:
-            with self.printLock:
-                if self.printing is True:
-                    print(f"{YELLOW}Printing already in progress. Ignoring request to print '{zine.path}'{ENDC}")
-                    return
-
-                self.printing = True
-
-        # estimate print time, to prevent printing another zine before this one is finished 
-        # printZine automatically initializes markup when needed, but we manually load it here so we can get the length of the text for the time estimate
-        zine.initMarkup()
-        printTime = self.secondsPerCharacter * len(zine.text) + self.basePrintTime
-        print(f"{len(zine.text)} characters long. Estimated print time: {printTime} seconds.")
-
-        print("Printing...")
-        zine.printZine(self.printerManager.printer)
-        self.printerManager.printer.device.flush()
-
-        time.sleep(printTime)
+    def printText(self, text, styles=Zine.defaultStyles):
+        """print some text. queues up after the current print is complete with busy waiting"""
+        while self.printing == True:
+            time.sleep(0.5)
 
         with self.printLock:
+            self.printing = True
+            self.printerManager.printer.set(**styles)
+            self.printerManager.printer.text(text)
+            self.printerManager.printer.device.flush()
             self.printing = False
 
-        zine.clearCache()
-        print("Done printing.")
+    def printZine(self, zine, ignoreLock=False):
+        """ignoreLock - when true, we assert that we have already acquired the print priority and we should skip the locking check (i.e. started the print in printRandomZineFromCategory)"""
+        try:
+            if ignoreLock is False:
+                with self.printLock:
+                    if self.printing is True:
+                        print(f"{YELLOW}Printing already in progress. Ignoring request to print '{zine.path}'{ENDC}")
+                        return
+
+                    self.printing = True
+
+            # estimate print time, to prevent printing another zine before this one is finished 
+            # printZine automatically initializes markup when needed, but we manually load it here so we can get the length of the text for the time estimate
+            zine.initMarkup()
+            printTime = self.secondsPerCharacter * len(zine.text) + self.basePrintTime
+            print(f"{len(zine.text)} characters long. Estimated print time: {printTime} seconds.")
+
+            print("Printing...")
+            zine.printZine(self.printerManager.printer)
+            self.printerManager.printer.device.flush()
+
+            time.sleep(printTime)
+
+            with self.printLock:
+                self.printing = False
+
+            zine.clearCache()
+            print("Done printing.")
+        except Exception as e:
+            raise e
+        finally:
+            self.printing = False
 
     def printRandomZineFromCategory(self, category):
         with self.printLock:
