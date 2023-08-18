@@ -170,6 +170,7 @@ class Zine(object):
 
         title = [line.center(topInnerWidth if i == 0 else innerWidth) for i, line in enumerate(textwrap.wrap(metadata.get('title', ''), width=topInnerWidth))]
 
+        description = [line.center(innerWidth) for line in textwrap.wrap(metadata.get('description', ''), width=innerWidth)]
         # description = textWrapper.wrap(zine.metadata.get('"description') or '')
         datepublished = date.fromisoformat(metadata['datepublished']) if 'datepublished' in metadata else None
         author = metadata.get('author', None)
@@ -177,9 +178,10 @@ class Zine(object):
         byline = [line.center(innerWidth) for line in textwrap.wrap(", ".join(([author] if author else [])
                                                                     + ([str(datepublished.year)] if datepublished else [])), width=innerWidth)]
         # todo: wrap category
-        categoryText = (category if category is not None else '').center(bottomInnerWidth)
+        #categoryText = (category if category is not None else '').center(bottomInnerWidth)
 
-        publisher = [line.center(innerWidth) for line in textwrap.wrap(metadata['publisher'] if 'publisher' in metadata else '', width=innerWidth)]
+        # publisher = [line.center(innerWidth) for line in textwrap.wrap(metadata['publisher'] if 'publisher' in metadata else '', width=innerWidth)]
+        publisher = [line.center(bottomInnerWidth) for line in textwrap.wrap(metadata['publisher'] if 'publisher' in metadata else '', width=innerWidth)]
 
         printer.set(**styles)
         # print empty line to ensure we are at the beginning of a newline
@@ -201,22 +203,40 @@ class Zine(object):
                 printer.text(border['right'])
                 printer.text('\n')
 
-        for line in byline:
+        for i, line in enumerate(description):
             printer.text(border['left'])
             printer.text(line)
             printer.text(border['right'])
             printer.text('\n')
 
-        for line in publisher:
-            printer.text(border['left'])
-            printer.text(line)
-            printer.text(border['right'])
-            printer.text('\n')
+        for l, line in enumerate(byline):
+            if len(publisher) == 0 and l == len(byline) - 1:
+                printer.text(border['bottom-left-inner'])
+                printer.text(line.strip().center(bottomInnerWidth))
+                printer.text(border['bottom-right-inner'])
+                printer.text('\n')
+            else:
+                printer.text(border['left'])
+                printer.text(line)
+                printer.text(border['right'])
+                printer.text('\n')
 
-        printer.text(border['bottom-left-inner'])
-        printer.text(categoryText)
-        printer.text(border['bottom-right-inner'])
-        printer.text('\n')
+        for l, line in enumerate(publisher):
+            if l < len(publisher) - 1:
+                printer.text(border['left'])
+                printer.text(line)
+                printer.text(border['right'])
+                printer.text('\n')
+            else:
+                printer.text(border['bottom-left-inner'])
+                printer.text(line.strip().center(bottomInnerWidth))
+                printer.text(border['bottom-right-inner'])
+                printer.text('\n')
+
+        #printer.text(border['bottom-left-inner'])
+        #printer.text(categoryText)
+        #printer.text(border['bottom-right-inner'])
+        #printer.text('\n')
         printer.text(border['bottom-left'])
         printer.text(border['bottom'] * bottomWidth)
         printer.text(border['bottom-right'])

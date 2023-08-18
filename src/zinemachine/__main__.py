@@ -111,7 +111,8 @@ def serveZines(args):
     inputManager.addChord(frozenset([BUTTON_BLUE_PIN, BUTTON_YELLOW_PIN, BUTTON_GREEN_PIN, BUTTON_PINK_PIN]), shutdown, holdTime=5.0)
 
 
-    zineMachine.printText("Ready to print!\n\n\n\n\n")
+    zineCount = sum([len(v) for v in zineMachine.categories.values()])
+    zineMachine.printText(f"{zineCount} zines loaded. Ready to print!\n\n\n\n\n\n")
     signal.pause()
 
 

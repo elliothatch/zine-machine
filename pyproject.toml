@@ -3,14 +3,15 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "zine-machine"
-version = "0.1.0"
+name = "zinemachine"
+version = "1.0.0"
 description = "print zines from a receipt printer using raspberry pi"
 readme = "README.md"
 authors = [
 	{ name = "Elliot Hatch", email = "elliot.hatch@gmail.com" },
 ]
 license = { file = "LICENSE" }
+keywords = ["zine", "printer", "receipt printer", "POS printer", "escpos"]
 requires-python = ">=3.7"
 
 dependencies = [
@@ -28,4 +29,14 @@ classifiers = [
 	"Programming Language :: Python :: 3.9",
 	"Programming Language :: Python :: 3.10",
 	"Programming Language :: Python :: 3.11",
+]
+
+[project.urls]
+Homepage = "https://elliot.zone/zinemachine"
+Repository = "https://github.com/elliothatch/zine-machine.git"
+Changelog = "https://github.com/elliothatch/zine-machine/blob/master/CHANGES.md"
+
+[project.optional-dependencies]
+build = [
+	"sphinx"
 ]
