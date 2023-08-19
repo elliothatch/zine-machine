@@ -85,6 +85,7 @@ class ZineValidator(object):
     def validateZine(self, path: str) -> List[ZineValidationDiagnostic]:
         """
         Validates a .zine file.
+
         A zine is considered invalid for any of the following reasons:
          - it does not contain a well formatted header
          - invalid or incomplete markup

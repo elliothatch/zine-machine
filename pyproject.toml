@@ -35,8 +35,3 @@ classifiers = [
 Homepage = "https://elliot.zone/zinemachine"
 Repository = "https://github.com/elliothatch/zine-machine.git"
 Changelog = "https://github.com/elliothatch/zine-machine/blob/master/CHANGES.md"
-
-[project.optional-dependencies]
-build = [
-	"sphinx"
-]

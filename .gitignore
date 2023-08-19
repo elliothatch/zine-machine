@@ -1,2 +1,8 @@
 __pycache__/
 *.egg-info/
+pyvenv.cfg
+include/
+lib/
+lib64
+bin/
+share/
