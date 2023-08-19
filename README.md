@@ -296,3 +296,12 @@ python -m zinemachine
 ```
 python -m unittest
 ```
+
+# publish
+```
+python -m build
+```
+
+```
+python -m twine upload dist/*
+```
