@@ -274,7 +274,7 @@ class Zine(object):
         printer.set(**styles)
         printer.text(" - Zine Machine\n")
 
-        printer.text("\n\n\n")
+        printer.text("\n\n\n\n\n\n")
 
     @staticmethod
     def wrapMarkup(markup, wrappedText: List[str], wrappedTextPos=None, textwrapOptions=defaultTextwrapOptions, styles=defaultStyles):

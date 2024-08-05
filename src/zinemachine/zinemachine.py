@@ -62,19 +62,22 @@ class ZineMachine(object):
             # printZine automatically initializes markup when needed, but we manually load it here so we can get the length of the text for the time estimate
             zine.initMarkup()
             printTime = self.secondsPerCharacter * len(zine.text) + self.basePrintTime
+            endPrintTime = time.time() + printTime
             print(f"{len(zine.text)} characters long. Estimated print time: {printTime} seconds.")
 
             print("Printing...")
             zine.printZine(self.printerManager.printer)
             self.printerManager.printer.device.flush()
 
-            time.sleep(printTime)
+            while time.time() < endPrintTime:
+                # wait in small incremements to prevent excessive waiting if thread isn't resumed quickly
+                time.sleep(1.0)
 
             with self.printLock:
                 self.printing = False
 
-            zine.clearCache()
             print("Done printing.")
+            zine.clearCache()
         except Exception as e:
             raise e
         finally:
